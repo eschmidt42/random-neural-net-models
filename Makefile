@@ -29,7 +29,7 @@ req-out := requirements.txt # output file of requirements compilation
 .PHONY: install
 install: venv
 	source .venv/bin/activate && \
-	pip-sync $(req-in) && \
+	pip-sync $(req-out) && \
 	pip install -e . && \
 	pre-commit install
 
