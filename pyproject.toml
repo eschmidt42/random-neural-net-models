@@ -25,7 +25,9 @@ dependencies = [
     "numpy",
     "matplotlib",
     "seaborn",
-    "scikit-learn"
+    "scikit-learn",
+    "rich",
+    "tqdm"
 ]
 
 [tool.black]
