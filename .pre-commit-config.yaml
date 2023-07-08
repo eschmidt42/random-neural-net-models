@@ -38,11 +38,9 @@ repos:
         language: python
         types_or: [python, pyi]
         args: [--line-length=80]
-    -   id: pytest
-        name: pytest
-        entry: pytest .
-        args: [-vx]
-        stages: [commit]
-        language: system
-        types: [python]
-        require_serial: true
+    - id: pytest
+      name: pytest
+      entry: python3 -m pytest -vx -m "not slow"
+      pass_filenames: false
+      language: system
+      types: [python]

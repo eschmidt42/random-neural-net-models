@@ -5,7 +5,10 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import tqdm
-from sklearn import base
+from scipy.sparse import issparse
+from sklearn import base, preprocessing
+from sklearn.utils.multiclass import unique_labels
+from sklearn.utils.validation import check_is_fitted
 
 import random_neural_net_models.utils as utils
 
@@ -115,9 +118,28 @@ class PerceptronClassifier(base.BaseEstimator, base.ClassifierMixin):
             self.errors_[epoch] = y_error
 
     def fit(self, X: np.ndarray, y: np.ndarray) -> "PerceptronClassifier":
-        self.classes_ = np.unique(y)
+        if issparse(y):
+            raise ValueError(
+                "sparse multilabel-indicator for y is not supported."
+            )
+
+        X, y = self._validate_data(
+            X,
+            y,
+            ensure_2d=True,
+            y_numeric=base.is_regressor(self),
+            multi_output=False,
+            dtype="numeric",
+            allow_nd=True,
+        )
+
+        self.n_features_in_ = X.shape[1]
+
+        self.classes_ = unique_labels(y)  # np.unique(y)
         self.n_classes_ = len(self.classes_)
         self.is_multi_class_ = self.n_classes_ > 2
+        self.y_enc_ = preprocessing.LabelEncoder().fit(y)
+        y = self.y_enc_.transform(y)
 
         if self.is_multi_class_:
             logger.debug(
@@ -134,12 +156,31 @@ class PerceptronClassifier(base.BaseEstimator, base.ClassifierMixin):
 
     @torch.no_grad()
     def predict(self, X: np.ndarray) -> np.ndarray:
+        check_is_fitted(
+            self,
+            (
+                "classes_",
+                "n_classes_",
+                "is_multi_class_",
+                "weights_",
+                "bias_",
+                "n_features_in_",
+                "errors_",
+            ),
+        )
+        X = self._validate_data(X, dtype=[np.float32, np.float64], reset=False)
+
+        if X.shape[1] != self.n_features_in_:
+            raise ValueError(f"{X.shape[1]=} != {self.n_features_in_=}")
+
         _X, _ = self._handle_Xy(X, y=None)
         y_hat = _X @ self.weights_ + self.bias_
 
         if self.is_multi_class_:
             y_pred = torch.argmax(y_hat, dim=1).detach().numpy()
-            return y_pred
+
         else:
-            y_pred = torch.where(y_hat > 0, 1.0, 0.0).detach().numpy()
-            return y_pred
+            y_pred = torch.where(y_hat > 0, 1, 0).detach().numpy()
+
+        y_pred = self.y_enc_.inverse_transform(y_pred)
+        return y_pred
