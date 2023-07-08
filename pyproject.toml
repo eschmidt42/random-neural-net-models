@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "random-neural-net-models"
 requires-python = ">=3.10"
 
-version = "0.0.0"
+version = "0.1.0"
 authors = [
     {name = "eschmidt42", email="11818904+eschmidt42@users.noreply.github.com"}
 ]
