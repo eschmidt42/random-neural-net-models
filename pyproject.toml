@@ -39,15 +39,15 @@ line_length = 80
 include_trailing_comma = true
 profile = "black"
 
-# [tool.setuptools.packages.find]
-# where = ["."]  # list of folders that contain the packages (["."] by default)
-# include = ["random_neural_net_models"]  # package names should match these glob patterns (["*"] by default)
-# exclude = ["tests"]  # exclude packages matching these glob patterns (empty by default)
-# namespaces = false  # to disable scanning PEP 420 namespaces (true by default)
+[tool.setuptools.packages.find]
+where = ["src"]  # list of folders that contain the packages (["."] by default)
+include = ["random_neural_net_models"]  # package names should match these glob patterns (["*"] by default)
+exclude = ["tests"]  # exclude packages matching these glob patterns (empty by default)
+namespaces = false  # to disable scanning PEP 420 namespaces (true by default)
 
 [tool.pytest.ini_options]
-pythonpath = ["random_neural_net_models"]
-testpaths = ["tests"]
+pythonpath = ["src/random_neural_net_models"]
+testpaths = ["src/tests"]
 python_files = ["test_*.py"]
 markers = [
     "slow" # mark test as slow
