@@ -59,6 +59,8 @@ defusedxml==0.7.1
     # via nbconvert
 distlib==0.3.6
     # via virtualenv
+einops==0.6.1
+    # via random-neural-net-models (pyproject.toml)
 executing==1.2.0
     # via stack-data
 fastjsonschema==2.17.1
