@@ -42,6 +42,16 @@ def densify_y(y: torch.Tensor) -> torch.Tensor:
     return new_y.double()
 
 
+class Tanh(nn.Module):
+    def __init__(self, A: float = 1.716, S: float = 2 / 3):
+        super().__init__()
+        self.register_buffer("A", torch.tensor(A))
+        self.register_buffer("S", torch.tensor(S))
+
+    def forward(self, x: torch.Tensor):
+        return self.A * torch.tanh(self.S * x)
+
+
 class Conv2d(torch.nn.Module):
     def __init__(
         self,
@@ -129,16 +139,6 @@ class Conv2d(torch.nn.Module):
         return output
 
 
-class Tanh(nn.Module):
-    def __init__(self, A: float = 1.716, S: float = 2 / 3):
-        super().__init__()
-        self.A = A
-        self.S = S
-
-    def forward(self, x: torch.Tensor):
-        return self.A * torch.tanh(self.S * x)
-
-
 class Model(nn.Module):
     # based on LeCun et al. 1990, _Handwritten Digit Recognition: Applications of Neural Net Chips and Automatic Learning_, Neurocomputing, https://link.springer.com/chapter/10.1007/978-3-642-76153-9_35
     # inspired by https://einops.rocks/pytorch-examples.html
@@ -148,6 +148,8 @@ class Model(nn.Module):
         n_classes: int = 10,
         lecun_init: bool = True,
         lecun_act: bool = True,
+        A: float = 1.716,
+        S: float = 2 / 3,
     ):
         super().__init__()
 
@@ -185,21 +187,27 @@ class Model(nn.Module):
             self.lin2.weight.data.uniform_(-s, s)
 
         if lecun_act:
-            self.act = Tanh()
+            self.act_conv1 = Tanh(A, S)
+            self.act_conv2 = Tanh(A, S)
+            self.act_lin1 = Tanh(A, S)
+            self.act_lin2 = Tanh(A, S)
         else:
-            self.act = F.tanh
+            self.act_conv1 = nn.Tanh()
+            self.act_conv2 = nn.Tanh()
+            self.act_lin1 = nn.Tanh()
+            self.act_lin2 = nn.Tanh()
 
         self.net = nn.Sequential(
             Rearrange("b h w -> b 1 h w"),
             self.conv1,
-            self.act,
+            self.act_conv1,
             self.conv2,
-            self.act,
+            self.act_conv2,
             Rearrange("b c h w -> b (c h w)"),
             self.lin1,
-            self.act,
+            self.act_lin1,
             self.lin2,
-            self.act,
+            self.act_lin2,
         )
 
     def forward(self, x: torch.Tensor):
@@ -306,3 +314,46 @@ def draw_history(
 
     plt.tight_layout()
     plt.show()
+
+
+from functools import partial
+
+
+class Hook:
+    def __init__(self, m: nn.Module, f: T.Callable):
+        self.hook = m.register_forward_hook(partial(f, self))
+
+    def remove(self):
+        self.hook.remove()
+
+    def __del__(self):
+        self.remove()
+
+
+def append_stats(hook, mod: nn.Module, inp: torch.Tensor, outp: torch.Tensor):
+    if not hasattr(hook, "stats"):
+        hook.stats = ([], [])
+    acts = outp.cpu().detach().numpy()
+    mean, std = acts.mean(), acts.std()
+    hook.stats[0].append(mean)
+    hook.stats[1].append(std)
+
+
+def draw_activations(hooks: T.List[Hook], hook_names: T.List[str]):
+    fig, axs = plt.subplots(figsize=(12, 8), nrows=2, sharex=True)
+
+    for h, name in zip(hooks, hook_names):
+        axs[0].plot(h.stats[0], label=name, alpha=0.5)
+        axs[1].plot(h.stats[1], label=name, alpha=0.5)
+
+    axs[0].legend()
+    axs[0].set(title="activation mean")
+    axs[1].legend()
+    axs[1].set(title="activation std")
+    plt.tight_layout()
+
+
+def clear_hooks(hooks: T.List[Hook]):
+    for h in hooks:
+        h.remove()
+    del hooks[:]
