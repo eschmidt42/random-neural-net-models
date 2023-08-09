@@ -27,7 +27,8 @@ dependencies = [
     "seaborn",
     "scikit-learn",
     "rich",
-    "tqdm"
+    "tqdm",
+    "einops",
 ]
 
 [tool.black]
