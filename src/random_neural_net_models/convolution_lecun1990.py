@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import typing as T
 from collections import defaultdict
+from functools import partial
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -316,12 +317,10 @@ def draw_history(
     plt.show()
 
 
-from functools import partial
-
-
 class Hook:
-    def __init__(self, m: nn.Module, f: T.Callable):
-        self.hook = m.register_forward_hook(partial(f, self))
+    def __init__(self, module: nn.Module, func: T.Callable, name: str = None):
+        self.hook = module.register_forward_hook(partial(func, self))
+        self.name = name
 
     def remove(self):
         self.hook.remove()
@@ -336,24 +335,42 @@ def append_stats(
     inp: torch.Tensor,
     outp: torch.Tensor,
     hist_bins: int = 80,
-    hist_range: T.Tuple[int, int] = (-10, 10),
+    hist_range: T.Tuple[int, int] = (0, 10),
 ):
     if not hasattr(hook, "stats"):
         hook.stats = ([], [], [])
     acts = outp.cpu().detach()
     mean, std = acts.mean().item(), acts.std().item()
-    hist = acts.histc(hist_bins, hist_range[0], hist_range[1])
+    hist = acts.abs().histc(hist_bins, hist_range[0], hist_range[1])
     hook.stats[0].append(mean)
     hook.stats[1].append(std)
     hook.stats[2].append(hist)
 
 
-def draw_activations(hooks: T.List[Hook], hook_names: T.List[str]):
+def get_hooks(
+    model: Model,
+    hook_func: T.Callable = partial(append_stats, hist_range=(0, 2)),
+) -> T.List[Hook]:
+    model_acts = [
+        model.act_conv1,
+        model.act_conv2,
+        model.act_lin1,
+        model.act_lin2,
+    ]
+    act_names = ["act_conv1", "act_conv2", "act_lin1", "act_lin2"]
+    hooks = [
+        Hook(layer, hook_func, name=name)
+        for name, layer in zip(act_names, model_acts)
+    ]
+    return hooks
+
+
+def draw_activations(hooks: T.List[Hook], hist_aspect: int = 10):
     fig, axs = plt.subplots(figsize=(12, 8), nrows=2, sharex=True)
 
-    for h, name in zip(hooks, hook_names):
-        axs[0].plot(h.stats[0], label=name, alpha=0.5)
-        axs[1].plot(h.stats[1], label=name, alpha=0.5)
+    for h in hooks:
+        axs[0].plot(h.stats[0], label=h.name, alpha=0.5)
+        axs[1].plot(h.stats[1], label=h.name, alpha=0.5)
 
     axs[0].legend()
     axs[0].set(title="activation mean")
@@ -361,14 +378,14 @@ def draw_activations(hooks: T.List[Hook], hook_names: T.List[str]):
     axs[1].set(title="activation std")
     plt.tight_layout()
 
-    for h, name in zip(hooks, hook_names):
+    for h in hooks:
         fig, ax = plt.subplots(figsize=(12, 4), nrows=1)
         hist = torch.stack(h.stats[2]).t().float().log1p().numpy()
-        ax.imshow(hist, aspect=10, origin="lower")
+        ax.imshow(hist, aspect=hist_aspect, origin="lower")
         ax.grid(False)
         ax.set_axis_off()
 
-        ax.set_title(name, fontsize=16)
+        ax.set_title(h.name, fontsize=16)
         plt.tight_layout()
 
 
