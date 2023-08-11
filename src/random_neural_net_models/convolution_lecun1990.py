@@ -330,13 +330,22 @@ class Hook:
         self.remove()
 
 
-def append_stats(hook, mod: nn.Module, inp: torch.Tensor, outp: torch.Tensor):
+def append_stats(
+    hook,
+    mod: nn.Module,
+    inp: torch.Tensor,
+    outp: torch.Tensor,
+    hist_bins: int = 80,
+    hist_range: T.Tuple[int, int] = (-10, 10),
+):
     if not hasattr(hook, "stats"):
-        hook.stats = ([], [])
-    acts = outp.cpu().detach().numpy()
-    mean, std = acts.mean(), acts.std()
+        hook.stats = ([], [], [])
+    acts = outp.cpu().detach()
+    mean, std = acts.mean().item(), acts.std().item()
+    hist = acts.histc(hist_bins, hist_range[0], hist_range[1])
     hook.stats[0].append(mean)
     hook.stats[1].append(std)
+    hook.stats[2].append(hist)
 
 
 def draw_activations(hooks: T.List[Hook], hook_names: T.List[str]):
@@ -351,6 +360,16 @@ def draw_activations(hooks: T.List[Hook], hook_names: T.List[str]):
     axs[1].legend()
     axs[1].set(title="activation std")
     plt.tight_layout()
+
+    for h, name in zip(hooks, hook_names):
+        fig, ax = plt.subplots(figsize=(12, 4), nrows=1)
+        hist = torch.stack(h.stats[2]).t().float().log1p().numpy()
+        ax.imshow(hist, aspect=10, origin="lower")
+        ax.grid(False)
+        ax.set_axis_off()
+
+        ax.set_title(name, fontsize=16)
+        plt.tight_layout()
 
 
 def clear_hooks(hooks: T.List[Hook]):
