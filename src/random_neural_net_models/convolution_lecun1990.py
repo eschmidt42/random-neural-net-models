@@ -393,3 +393,18 @@ def clear_hooks(hooks: T.List[Hook]):
     for h in hooks:
         h.remove()
     del hooks[:]
+
+
+def draw_loss(loss_history: LossHistory):
+    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(12, 4), sharex=True)
+
+    df = loss_history.get_df()
+    df_roll = loss_history.get_rolling_mean_df(window=10)
+
+    sns.lineplot(data=df, x="iter", y="loss", ax=ax, label="Train")
+    sns.lineplot(
+        data=df_roll, x="iter", y="loss", ax=ax, label="Train (rolling mean)"
+    )
+    ax.set(xlabel="Iter", ylabel="Loss", title="Loss History")
+
+    plt.tight_layout()
