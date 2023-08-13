@@ -227,7 +227,7 @@ class ParameterHistory:
         state_dict = model.state_dict()
 
         for name, tensor in state_dict.items():
-            self.history[name].append(tensor.clone().numpy().ravel())
+            self.history[name].append(tensor.clone().cpu().numpy().ravel())
 
         self.iter.append(_iter)
 
@@ -393,3 +393,18 @@ def clear_hooks(hooks: T.List[Hook]):
     for h in hooks:
         h.remove()
     del hooks[:]
+
+
+def draw_loss(loss_history: LossHistory, label: str = "Train"):
+    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(12, 4), sharex=True)
+
+    df = loss_history.get_df()
+    df_roll = loss_history.get_rolling_mean_df(window=10)
+
+    sns.lineplot(data=df, x="iter", y="loss", ax=ax, label=label)
+    sns.lineplot(
+        data=df_roll, x="iter", y="loss", ax=ax, label=f"{label} (rolling mean)"
+    )
+    ax.set(xlabel="Iter", ylabel="Loss", title="Loss History")
+
+    plt.tight_layout()
