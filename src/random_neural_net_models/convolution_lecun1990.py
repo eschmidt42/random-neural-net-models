@@ -335,7 +335,7 @@ def append_stats(
     inp: torch.Tensor,
     outp: torch.Tensor,
     hist_bins: int = 80,
-    hist_range: T.Tuple[int, int] = (0, 10),
+    hist_range: T.Tuple[float, float] = (0.0, 10.0),
 ):
     if not hasattr(hook, "stats"):
         hook.stats = ([], [], [])
@@ -395,11 +395,13 @@ def clear_hooks(hooks: T.List[Hook]):
     del hooks[:]
 
 
-def draw_loss(loss_history: LossHistory, label: str = "Train"):
+def draw_loss(
+    loss_history: LossHistory, label: str = "Train", window: int = 10
+):
     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(12, 4), sharex=True)
 
     df = loss_history.get_df()
-    df_roll = loss_history.get_rolling_mean_df(window=10)
+    df_roll = loss_history.get_rolling_mean_df(window=window)
 
     sns.lineplot(data=df, x="iter", y="loss", ax=ax, label=label)
     sns.lineplot(
