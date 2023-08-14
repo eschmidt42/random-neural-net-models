@@ -365,7 +365,7 @@ def get_hooks(
     return hooks
 
 
-def draw_activations(hooks: T.List[Hook], hist_aspect: int = 10):
+def draw_activations(hooks: T.List[Hook], hist_aspect: float = 10.0):
     fig, axs = plt.subplots(figsize=(12, 8), nrows=2, sharex=True)
 
     for h in hooks:
