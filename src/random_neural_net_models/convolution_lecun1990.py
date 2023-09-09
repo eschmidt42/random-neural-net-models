@@ -254,19 +254,32 @@ class ParameterHistory:
 
 
 class LossHistory:
-    def __init__(self, every_n: int = 1):
+    def __init__(self, every_n: int = 1, names: T.Tuple[str] = ("loss",)):
+        self.names = names
         self.history = []
         self.iter = []
         self.every_n = every_n
 
-    def __call__(self, loss: torch.Tensor, _iter: int):
+    def __call__(
+        self, losses: T.Union[torch.Tensor, T.Tuple[torch.Tensor]], _iter: int
+    ):
         if _iter % self.every_n != 0:
             return
-        self.history.append(loss.item())
+        if isinstance(losses, torch.Tensor):
+            self.history.append(losses.item())
+        else:
+            self.history.append([l.item() for l in losses])
         self.iter.append(_iter)
 
     def get_df(self) -> pd.DataFrame:
-        return pd.DataFrame({"iter": self.iter, "loss": self.history})
+        df = pd.DataFrame({"iter": self.iter})
+        if len(self.names) == 1:
+            df[self.names[0]] = self.history
+        else:
+            for i, name in enumerate(self.names):
+                df[name] = [l[i] for l in self.history]
+
+        return df
 
     def get_rolling_mean_df(self, window: int = 10) -> pd.DataFrame:
         df = self.get_df()
@@ -275,24 +288,38 @@ class LossHistory:
             df_roll["iter"] = range(len(df_roll))
         return df_roll
 
-    def draw(self, label: str, window: int = 10):
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(12, 4), sharex=True)
-
+    def draw(
+        self,
+        label: str,
+        window: int = 10,
+        figsize: T.Tuple[int, int] = (12, 4),
+        yscale: str = "linear",
+    ):
         df = self.get_df()
         df_roll = self.get_rolling_mean_df(window=window)
 
-        sns.lineplot(data=df, x="iter", y="loss", ax=ax, label=label, alpha=0.5)
-        sns.lineplot(
-            data=df_roll,
-            x="iter",
-            y="loss",
-            ax=ax,
-            label=f"{label} (rolling mean)",
-            alpha=0.5,
-        )
-        ax.set(xlabel="Iter", ylabel="Loss", title="Loss History")
+        for name in self.names:
+            fig, ax = plt.subplots(figsize=figsize)
+            sns.lineplot(
+                data=df, x="iter", y=name, ax=ax, label=label, alpha=0.5
+            )
+            sns.lineplot(
+                data=df_roll,
+                x="iter",
+                y=name,
+                ax=ax,
+                label=f"{label} (rolling mean)",
+                alpha=0.5,
+            )
+            ax.set(
+                xlabel="Iter",
+                ylabel="Loss",
+                title=f"Loss History: {name}",
+                yscale=yscale,
+            )
 
-        plt.tight_layout()
+            plt.tight_layout()
+
         return fig, ax
 
 
@@ -365,7 +392,7 @@ class GradientStats:
     std: float
     abs_perc90: float
     max: float
-    min: float
+    frac_dead: float
 
 
 class ParameterHistory2:
@@ -462,37 +489,50 @@ class ParameterHistory2:
         return pd.DataFrame(self.history[name])
 
 
+def check_module_name_is_activation(name: str) -> bool:
+    return name.startswith("act_")
+
+
+def check_module_name_grad_relevant(name: str) -> bool:
+    return name != "net"
+
+
 class ModelTelemetry(nn.Module):
     def __init__(
         self,
         model: nn.Module,
-        activation_name_pattern: str = "act_",
+        func_is_act: T.Callable = check_module_name_is_activation,
+        func_is_grad_relevant: T.Callable = check_module_name_grad_relevant,
         loss_train_every_n: int = 1,
         loss_test_every_n: int = 1,
         parameter_every_n: int = 1,
         activations_every_n: int = 1,
         gradients_every_n: int = 1,
+        loss_names: T.Tuple[str] = ("loss",),
     ):
         super().__init__()
         self.model = model
 
         # activations bit
-        self.activation_name_pattern = activation_name_pattern
         self.hooks_activations = defaultdict(None)
         self.stats_activations: T.Dict[
             str, T.List[ActivationStats]
         ] = defaultdict(list)
 
         for name, child in self.model.named_children():
-            if name.startswith(self.activation_name_pattern):
+            if func_is_act(name):
                 cas = CollectorActivationStats(
                     self, name, every_n=activations_every_n
                 )
                 self.hooks_activations[name] = child.register_forward_hook(cas)
 
         # loss bit
-        self.loss_history_train = LossHistory(loss_train_every_n)
-        self.loss_history_test = LossHistory(loss_test_every_n)
+        self.loss_history_train = LossHistory(
+            loss_train_every_n, names=loss_names
+        )
+        self.loss_history_test = LossHistory(
+            loss_test_every_n, names=loss_names
+        )
 
         # parameter bit
         self.parameter_history = ParameterHistory2(
@@ -506,7 +546,7 @@ class ModelTelemetry(nn.Module):
         )
 
         for name, child in self.model.named_children():
-            if name != "net":
+            if func_is_grad_relevant(name):
                 cgs = CollectorGradientStats(
                     self, name, every_n=gradients_every_n
                 )
@@ -522,73 +562,70 @@ class ModelTelemetry(nn.Module):
             hook.remove()
         self.hooks_activations.clear()
 
-    def draw_activation_stats(self, figsize: T.Tuple[int, int] = (12, 8)):
+    def draw_activation_stats(
+        self, figsize: T.Tuple[int, int] = (12, 8), yscale: str = "linear"
+    ):
         fig, axs = plt.subplots(figsize=figsize, nrows=3, sharex=True)
         plt.suptitle("Activation Stats")
 
         # activation mean
-        ax = axs[0]
-        for _name, _stats in self.stats_activations.items():
-            ax.plot([s.mean for s in _stats], label=_name, alpha=0.5)
-
-        # activation std
         ax = axs[1]
         for _name, _stats in self.stats_activations.items():
-            ax.plot([s.std for s in _stats], label=_name, alpha=0.5)
+            ax.plot([s.mean for s in _stats], label=_name, alpha=0.5)
+        ax.set(title="mean", yscale=yscale)
 
-        # share of dead neurons
+        # activation std
         ax = axs[2]
         for _name, _stats in self.stats_activations.items():
-            ax.plot([s.frac_dead for s in _stats], label=_name, alpha=0.5)
+            ax.plot([s.std for s in _stats], label=_name, alpha=0.5)
+        ax.set(title="standard deviation", yscale=yscale)
 
-        axs[0].legend()
-        axs[0].set(title="mean")
+        # share of dead neurons
+        ax = axs[0]
+        for _name, _stats in self.stats_activations.items():
+            ax.plot([s.frac_dead for s in _stats], label=_name, alpha=0.5)
+        ax.set(title="fraction of dead neurons", xlabel="iter")
+
         axs[1].legend()
-        axs[1].set(title="standard deviation")
-        axs[2].legend()
-        axs[2].set(title="fraction of dead neurons", xlabel="iter")
 
         plt.tight_layout()
 
-    def draw_gradient_stats(self, figsize: T.Tuple[int, int] = (12, 15)):
+    def draw_gradient_stats(
+        self, figsize: T.Tuple[int, int] = (12, 15), yscale: str = "linear"
+    ):
         fig, axs = plt.subplots(figsize=figsize, nrows=5, sharex=True)
         plt.suptitle("Gradient Stats")
 
         # gradient mean
-        ax = axs[0]
+        ax = axs[4]
         for _name, _stats in self.stats_gradients.items():
             ax.plot([s.mean for s in _stats], label=_name, alpha=0.5)
+        ax.set(title="mean", yscale=yscale)
 
         # gradient std
-        ax = axs[1]
+        ax = axs[3]
         for _name, _stats in self.stats_gradients.items():
             ax.plot([s.std for s in _stats], label=_name, alpha=0.5)
+        ax.set(title="standard deviation", yscale=yscale)
 
         # abs_perc90
         ax = axs[2]
         for _name, _stats in self.stats_gradients.items():
             ax.plot([s.abs_perc90 for s in _stats], label=_name, alpha=0.5)
+        ax.legend()
+        ax.set(title="90%(abs)", yscale=yscale)
 
         # vanishing
-        ax = axs[3]
+        ax = axs[1]
         for _name, _stats in self.stats_gradients.items():
-            ax.plot([s.min for s in _stats], label=_name, alpha=0.5)
+            ax.plot([s.frac_dead for s in _stats], label=_name, alpha=0.5)
+        ax.set(title="frac(dead)")
 
         # exploding
-        ax = axs[4]
+        ax = axs[0]
         for _name, _stats in self.stats_gradients.items():
             ax.plot([s.max for s in _stats], label=_name, alpha=0.5)
-
-        axs[0].legend()
-        axs[0].set(title="mean")
-        axs[1].legend()
-        axs[1].set(title="standard deviation")
-        axs[2].legend()
-        axs[2].set(title="90%(abs)")
-        axs[3].legend()
-        axs[3].set(title="min(abs)")
-        axs[4].legend()
-        axs[4].set(title="max(abs)", xlabel="iter")
+        ax.set(title="max(abs)", xlabel="iter", yscale=yscale)
 
         plt.tight_layout()
 
@@ -607,18 +644,24 @@ class ModelTelemetry(nn.Module):
 
 
 class CollectorActivationStats:
-    def __init__(self, hook: ModelTelemetry, name: str, every_n: int = 1):
+    def __init__(
+        self,
+        hook: ModelTelemetry,
+        name: str,
+        every_n: int = 1,
+        threshold_dead=1e-6,
+    ):
         self.hook = hook
         self.name = name
         self.every_n = every_n
         self.iter = 0
+        self.threshold_dead = threshold_dead
 
     def __call__(
         self,
         module: nn.Module,
         input: torch.Tensor,
         output: torch.Tensor,
-        threshold_dead=1e-5,
     ):
         self.iter += 1
         if self.iter % self.every_n != 0:
@@ -627,7 +670,9 @@ class CollectorActivationStats:
         acts = output.detach().flatten()
         mean = acts.mean().cpu().item()
         std = acts.std().cpu().item()
-        frac_dead = (acts.abs() < threshold_dead).sum().cpu().item() / len(acts)
+        frac_dead = (acts.abs() < self.threshold_dead).sum().cpu().item() / len(
+            acts
+        )
 
         self.hook.stats_activations[self.name].append(
             ActivationStats(mean, std, frac_dead)
@@ -635,11 +680,18 @@ class CollectorActivationStats:
 
 
 class CollectorGradientStats:
-    def __init__(self, hook: ModelTelemetry, name: str, every_n: int = 1):
+    def __init__(
+        self,
+        hook: ModelTelemetry,
+        name: str,
+        every_n: int = 1,
+        threshold_dead: float = 1e-8,
+    ):
         self.hook = hook
         self.name = name
         self.every_n = every_n
         self.iter = 0
+        self.threshold_dead = threshold_dead
 
     def __call__(
         self,
@@ -650,15 +702,17 @@ class CollectorGradientStats:
         self.iter += 1
         if self.iter % self.every_n != 0:
             return
-        acts = output[0].detach().flatten()
-        mean = acts.mean().cpu().item()
-        std = acts.std().cpu().item()
-        abs_perc90 = acts.abs().quantile(0.9).cpu().item()
-        _max = acts.abs().max().cpu().item()
-        _min = acts.abs().min().cpu().item()
+        vals = output[0].detach().flatten()
+        mean = vals.mean().cpu().item()
+        std = vals.std().cpu().item()
+        abs_perc90 = vals.abs().quantile(0.9).cpu().item()
+        _max = vals.abs().max().cpu().item()
+        frac_dead = (vals.abs() < self.threshold_dead).sum().cpu().item() / len(
+            vals
+        )
 
         self.hook.stats_gradients[self.name].append(
-            GradientStats(mean, std, abs_perc90, _max, _min)
+            GradientStats(mean, std, abs_perc90, _max, frac_dead)
         )
 
 
