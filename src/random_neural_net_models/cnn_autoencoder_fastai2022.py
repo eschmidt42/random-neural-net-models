@@ -73,7 +73,7 @@ class Model(nn.Module):
         )
 
     def forward(self, x):
-        x = self.encoder(x)
-        x = self.decoder(x)
+        z = self.encoder(x)
+        x_hat = self.decoder(z)
 
-        return x
+        return x_hat
