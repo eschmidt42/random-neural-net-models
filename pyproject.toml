@@ -11,25 +11,7 @@ authors = [
     {name = "eschmidt42", email="11818904+eschmidt42@users.noreply.github.com"}
 ]
 description = "My implementation of a random selection of artificial neural net based models."
-dependencies = [
-    "jupyterlab",
-    "pytest",
-    "black",
-    "isort",
-    "pre-commit",
-    "jupyter-contrib-nbextensions",
-    "ipywidgets",
-    "pandas",
-    "pydantic",
-    "torch",
-    "numpy",
-    "matplotlib",
-    "seaborn",
-    "scikit-learn",
-    "rich",
-    "tqdm",
-    "einops",
-]
+# dependencies = [] - now via requirements/*.in files
 
 [tool.black]
 line-length = 80
