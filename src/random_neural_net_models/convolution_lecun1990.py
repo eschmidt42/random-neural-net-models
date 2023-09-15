@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from functools import partial
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import seaborn as sns
 import torch
@@ -396,26 +397,45 @@ class GradientStats:
 
 
 class ParameterHistory2:
-    def __init__(self, model: nn.Module, every_n: int = 1):
+    def __init__(
+        self, model: nn.Module, every_n: int = 1, sub_modules: T.Tuple[str] = ()
+    ):
         self.history: T.Dict[str, T.List[ParameterStats]] = defaultdict(list)
         self.every_n = every_n
         self.model = model
+        self.sub_modules = sub_modules
 
     def __call__(self, _iter: int):
         if _iter % self.every_n != 0:
             return
+
         state_dict = self.model.state_dict()
 
         for name, parameter_values in state_dict.items():
-            parameter_values = (
-                parameter_values.detach().flatten().float()
-            )  # .cpu().numpy()
+            parameter_values = parameter_values.detach().flatten().float()
             mean = parameter_values.mean().cpu().item()
             std = parameter_values.std().cpu().item()
             abs_perc90 = parameter_values.abs().quantile(0.9).cpu().item()
             self.history[name].append(
                 ParameterStats(_iter, mean, std, abs_perc90)
             )
+
+        for sub_module in self.sub_modules:
+            if hasattr(self.model, sub_module):
+                state_dict = getattr(self.model, sub_module).state_dict()
+
+                for name, parameter_values in state_dict.items():
+                    parameter_values = (
+                        parameter_values.detach().flatten().float()
+                    )
+                    mean = parameter_values.mean().cpu().item()
+                    std = parameter_values.std().cpu().item()
+                    abs_perc90 = (
+                        parameter_values.abs().quantile(0.9).cpu().item()
+                    )
+                    self.history[name].append(
+                        ParameterStats(_iter, mean, std, abs_perc90)
+                    )
 
     def draw(
         self,
@@ -457,13 +477,22 @@ class ParameterHistory2:
         _name = f"{name}.bias"
         df = self.get_df(_name)
 
-        ax.fill_between(
-            df["iter"],
-            df["mean"] - df["std"],
-            df["mean"] + df["std"],
-            alpha=0.5,
-            label="mean+-std",
-        )
+        is_useful_std = (~(df["std"].isin([np.inf, -np.inf]).any())) & df[
+            "std"
+        ].notna().all()
+        if is_useful_std:
+            ax.fill_between(
+                df["iter"],
+                df["mean"] - df["std"],
+                df["mean"] + df["std"],
+                alpha=0.5,
+                label="mean+-std",
+            )
+        else:
+            logger.error(
+                f"{_name=} df['std'] has inf or nan values, skipping fillbetween plot."
+            )
+
         sns.lineplot(
             data=df,
             x="iter",
@@ -486,7 +515,25 @@ class ParameterHistory2:
         plt.show()
 
     def get_df(self, name: str) -> pd.DataFrame:
-        return pd.DataFrame(self.history[name])
+        df = pd.DataFrame(self.history[name])
+        # print error to log if any column has inf or nan values
+        isna = df.isna()
+        if df.isna().any().any():
+            mean_na = (
+                isna.mean().sort_values(ascending=False).rename("fraction")
+            )
+            mean_na.index.name = "column"
+            logger.error(
+                f"{name=} df has missing values: {mean_na.to_markdown()}"
+            )
+        isinf = df.isin([np.inf, -np.inf])
+        if isinf.any().any():
+            mean_inf = (
+                isinf.mean().sort_values(ascending=False).rename("fraction")
+            )
+            mean_inf.index.name = "column"
+            logger.error(f"{name=} df has inf values: {mean_inf.to_markdown()}")
+        return df
 
 
 def check_module_name_is_activation(name: str) -> bool:
@@ -509,6 +556,7 @@ class ModelTelemetry(nn.Module):
         activations_every_n: int = 1,
         gradients_every_n: int = 1,
         loss_names: T.Tuple[str] = ("loss",),
+        sub_modules: T.Tuple[str] = (),
     ):
         super().__init__()
         self.model = model
@@ -525,6 +573,18 @@ class ModelTelemetry(nn.Module):
                     self, name, every_n=activations_every_n
                 )
                 self.hooks_activations[name] = child.register_forward_hook(cas)
+        for sub_module in sub_modules:
+            if hasattr(self.model, sub_module):
+                for name, child in getattr(
+                    self.model, sub_module
+                ).named_children():
+                    if func_is_act(name):
+                        cas = CollectorActivationStats(
+                            self, name, every_n=activations_every_n
+                        )
+                        self.hooks_activations[
+                            name
+                        ] = child.register_forward_hook(cas)
 
         # loss bit
         self.loss_history_train = LossHistory(
@@ -536,7 +596,7 @@ class ModelTelemetry(nn.Module):
 
         # parameter bit
         self.parameter_history = ParameterHistory2(
-            self.model, every_n=parameter_every_n
+            self.model, every_n=parameter_every_n, sub_modules=sub_modules
         )
 
         # gradient bit
@@ -553,6 +613,18 @@ class ModelTelemetry(nn.Module):
                 self.hooks_gradients[name] = child.register_full_backward_hook(
                     cgs
                 )
+        for sub_module in sub_modules:
+            if hasattr(self.model, sub_module):
+                for name, child in getattr(
+                    self.model, sub_module
+                ).named_children():
+                    if func_is_grad_relevant(name):
+                        cgs = CollectorGradientStats(
+                            self, name, every_n=gradients_every_n
+                        )
+                        self.hooks_gradients[
+                            name
+                        ] = child.register_full_backward_hook(cgs)
 
     def forward(self, x: torch.Tensor):
         return self.model(x)
@@ -563,7 +635,10 @@ class ModelTelemetry(nn.Module):
         self.hooks_activations.clear()
 
     def draw_activation_stats(
-        self, figsize: T.Tuple[int, int] = (12, 8), yscale: str = "linear"
+        self,
+        figsize: T.Tuple[int, int] = (12, 8),
+        yscale: str = "linear",
+        leg_lw: float = 5.0,
     ):
         fig, axs = plt.subplots(figsize=figsize, nrows=3, sharex=True)
         plt.suptitle("Activation Stats")
@@ -587,11 +662,16 @@ class ModelTelemetry(nn.Module):
         ax.set(title="fraction of dead neurons", xlabel="iter")
 
         axs[1].legend()
+        for leg_obj in axs[1].legend().legendHandles:
+            leg_obj.set_linewidth(leg_lw)
 
         plt.tight_layout()
 
     def draw_gradient_stats(
-        self, figsize: T.Tuple[int, int] = (12, 15), yscale: str = "linear"
+        self,
+        figsize: T.Tuple[int, int] = (12, 15),
+        yscale: str = "linear",
+        leg_lw: float = 5.0,
     ):
         fig, axs = plt.subplots(figsize=figsize, nrows=5, sharex=True)
         plt.suptitle("Gradient Stats")
@@ -626,6 +706,9 @@ class ModelTelemetry(nn.Module):
         for _name, _stats in self.stats_gradients.items():
             ax.plot([s.max for s in _stats], label=_name, alpha=0.5)
         ax.set(title="max(abs)", xlabel="iter", yscale=yscale)
+
+        for leg_obj in axs[2].legend().legendHandles:
+            leg_obj.set_linewidth(leg_lw)
 
         plt.tight_layout()
 
