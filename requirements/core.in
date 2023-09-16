@@ -1,0 +1,11 @@
+pandas
+tabulate
+pydantic
+torch
+numpy
+matplotlib
+seaborn
+scikit-learn
+rich
+tqdm
+einops

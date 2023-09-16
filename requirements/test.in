@@ -1,0 +1,2 @@
+-c core.txt
+pytest

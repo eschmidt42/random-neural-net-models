@@ -1,0 +1,9 @@
+-c core.txt
+-c test.txt
+black
+isort
+pre-commit
+jupyterlab
+jupyter-contrib-nbextensions
+ipywidgets
+torchinfo

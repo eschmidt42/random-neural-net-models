@@ -19,4 +19,4 @@ def get_logger(name: str = "rich", level=logging.INFO):
     return logger
 
 
-logger = get_logger()
+logger = get_logger("utils.py")
