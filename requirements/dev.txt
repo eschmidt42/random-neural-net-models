@@ -298,6 +298,8 @@ terminado==0.17.1
     #   jupyter-server-terminals
 tinycss2==1.2.1
     # via nbconvert
+torchinfo==1.8.0
+    # via -r requirements/dev.in
 tornado==6.3.3
     # via
     #   ipykernel

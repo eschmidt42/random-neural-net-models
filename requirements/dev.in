@@ -6,3 +6,4 @@ pre-commit
 jupyterlab
 jupyter-contrib-nbextensions
 ipywidgets
+torchinfo
