@@ -60,11 +60,16 @@ install: venv
 	pip install -e . && \
 	pre-commit install
 
-#  github actions test environment
+# github actions test environment
 .PHONY: install-gh-test
 install-gh-test:
 	pip install -r $(req-core-out) -r $(req-test-out) && \
 	pip install -e .
+
+# github actions test environment
+.PHONY: install-gh-publish
+install-gh-publish:
+	pip install -r $(req-core-out) -r $(req-publish-out)
 
 # ==============================================================================
 # update requirements and virtual env after changes to requirements/*.txt files
