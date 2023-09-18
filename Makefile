@@ -27,6 +27,8 @@ req-core-in := requirements/core.in   # input file for compilation of core requi
 req-core-out := requirements/core.txt # output file of core requirements compilation
 req-test-in := requirements/test.in   # input file for compilation of test requirements
 req-test-out := requirements/test.txt # output file of test requirements compilation
+req-publish-in := requirements/publish.in   # input file for compilation of publish requirements
+req-publish-out := requirements/publish.txt # output file of publish requirements compilation
 req-dev-in := requirements/dev.in     # input file for compilation of dev requirements
 req-dev-out := requirements/dev.txt   # output file of dev requirements compilation
 
@@ -35,6 +37,7 @@ compile:
 	source .venv/bin/activate && \
 	pip-compile $(req-core-in) -o $(req-core-out) --resolver=backtracking && \
 	pip-compile $(req-test-in) -o $(req-test-out) --resolver=backtracking && \
+	pip-compile $(req-publish-in) -o $(req-publish-out) --resolver=backtracking && \
 	pip-compile $(req-dev-in) -o $(req-dev-out) --resolver=backtracking
 
 .PHONY: compile-upgrade
@@ -42,29 +45,31 @@ compile-upgrade:
 	source .venv/bin/activate && \
 	pip-compile -U $(req-core-in) -o $(req-core-out) --resolver=backtracking && \
 	pip-compile -U $(req-test-in) -o $(req-test-out) --resolver=backtracking && \
+	pip-compile -U $(req-publish-in) -o $(req-publish-out) --resolver=backtracking && \
 	pip-compile -U $(req-dev-in) -o $(req-dev-out) --resolver=backtracking
 
 # ==============================================================================
 # install requirements
 # ==============================================================================
 
-req-in := pyproject.toml    # input file for compilation of requirements
-req-out := requirements.txt # output file of requirements compilation
-
-
 # default environment (for local development)
 .PHONY: install
 install: venv
 	source .venv/bin/activate && \
-	pip-sync $(req-core-out) $(req-test-out) $(req-dev-out) && \
+	pip-sync $(req-core-out) $(req-test-out) $(req-publish-out) $(req-dev-out) && \
 	pip install -e . && \
 	pre-commit install
 
-#  github actions test environment
+# github actions test environment
 .PHONY: install-gh-test
 install-gh-test:
 	pip install -r $(req-core-out) -r $(req-test-out) && \
 	pip install -e .
+
+# github actions test environment
+.PHONY: install-gh-publish
+install-gh-publish:
+	pip install -r $(req-core-out) -r $(req-publish-out)
 
 # ==============================================================================
 # update requirements and virtual env after changes to requirements/*.txt files
@@ -73,7 +78,7 @@ install-gh-test:
 .PHONY: update
 update:
 	source .venv/bin/activate && \
-	pip-sync $(req-core-out) $(req-test-out) $(req-dev-out) && \
+	pip-sync $(req-core-out) $(req-test-out) $(req-publish-out) $(req-dev-out) && \
 	pip install -e .
 
 # ==============================================================================

@@ -1,16 +1,24 @@
 [build-system]
-requires = ["setuptools>=65.0"]
+requires = ["setuptools>=65.0","wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "random-neural-net-models"
+description = "My implementation of a random selection of artificial neural net based models."
 requires-python = ">=3.10"
-
-version = "0.1.0"
+version = "0.1.1"
 authors = [
     {name = "eschmidt42", email="11818904+eschmidt42@users.noreply.github.com"}
 ]
-description = "My implementation of a random selection of artificial neural net based models."
+readme = "README.md"
+license = { file = "LICENSE" }
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11"
+]
+keywords = ["neural-networks", "machine-learning", "deep-learning"]
 # dependencies = [] - now via requirements/*.in files
 
 [tool.black]
