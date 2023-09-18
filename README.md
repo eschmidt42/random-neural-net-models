@@ -26,3 +26,4 @@ See jupyter notebooks in `nbs/` for:
 * variational autoencoder:
     * dense: `dense_variational_autoencoder_fastai2022.ipynb`
     * cnn+dense: `cnn_variational_autoencoder_fastai2022.ipynb`
+* optimizers: `stochastic_optimization_methods.ipynb`
