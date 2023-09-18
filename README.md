@@ -6,13 +6,17 @@ Implementations of a random selection of artificial neural net based models and 
 
 Development is done using [`pyenv`](https://realpython.com/intro-to-pyenv/), pinning the python version to the one in the file `.python-version`.
 
-## Installation
+## Installation (on Linux)
 
-On Linux:
+Package + notebooks:
 
     git clone https://github.com/eschmidt42/random-neural-net-models.git
     cd random-neural-net-models
     make install
+
+Package only:
+
+    pip install random-neural-net-models
 
 ## Usage
 
