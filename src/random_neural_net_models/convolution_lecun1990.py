@@ -221,39 +221,6 @@ class Model(nn.Module):
         return self.net(x)
 
 
-class ParameterHistory:
-    def __init__(self, every_n: int = 1):
-        self.history = defaultdict(list)
-        self.every_n = every_n
-        self.iter = []
-
-    def __call__(self, model: nn.Module, _iter: int):
-        if _iter % self.every_n != 0:
-            return
-        state_dict = model.state_dict()
-
-        for name, tensor in state_dict.items():
-            self.history[name].append(
-                tensor.clone().detach().flatten().cpu().numpy()
-            )
-
-        self.iter.append(_iter)
-
-    def get_df(self, name: str) -> pd.DataFrame:
-        df = [
-            pd.DataFrame({"value": w}).assign(iter=i)
-            for i, w in zip(self.iter, self.history[name])
-        ]
-        return pd.concat(df, ignore_index=True)[["iter", "value"]]
-
-    def get_rolling_mean_df(self, name: str, window: int = 10) -> pd.DataFrame:
-        df = self.get_df(name)
-        df_roll = df.rolling(window=window, on="iter", min_periods=1).mean()
-        if "iter" not in df_roll.columns:
-            df_roll["iter"] = range(len(df_roll))
-        return df_roll
-
-
 class LossHistory:
     def __init__(self, every_n: int = 1, names: T.Tuple[str] = ("loss",)):
         self.names = names
@@ -324,54 +291,6 @@ class LossHistory:
         return fig, ax
 
 
-def draw_history(
-    history: ParameterHistory,
-    name: str,
-    figsize: T.Tuple[int, int] = (12, 4),
-    weight_bins: int = 20,
-    bias_bins: int = 10,
-) -> None:
-    fig, axs = plt.subplots(figsize=figsize, nrows=2, sharex=True)
-
-    ax = axs[0]
-    _name = f"{name}.weight"
-    df = history.get_df(_name)
-
-    n_iter = df["iter"].nunique()
-    bins = (n_iter, weight_bins)
-    sns.histplot(
-        data=df,
-        x="iter",
-        y="value",
-        ax=ax,
-        thresh=None,
-        cmap="plasma",
-        bins=bins,
-    )
-    ax.set_ylabel("weight")
-    ax.set_title(name)
-
-    ax = axs[1]
-    _name = f"{name}.bias"
-    df = history.get_df(_name)
-
-    bins = (n_iter, bias_bins)
-    sns.histplot(
-        data=df,
-        x="iter",
-        y="value",
-        ax=ax,
-        thresh=None,
-        cmap="plasma",
-        bins=bins,
-    )
-    ax.set_xlabel("iter")
-    ax.set_ylabel("bias")
-
-    plt.tight_layout()
-    plt.show()
-
-
 @dataclass
 class ActivationStats:
     mean: float
@@ -396,7 +315,7 @@ class GradientStats:
     frac_dead: float
 
 
-class ParameterHistory2:
+class ParameterHistory:
     def __init__(
         self, model: nn.Module, every_n: int = 1, sub_modules: T.Tuple[str] = ()
     ):
@@ -595,7 +514,7 @@ class ModelTelemetry(nn.Module):
         )
 
         # parameter bit
-        self.parameter_history = ParameterHistory2(
+        self.parameter_history = ParameterHistory(
             self.model, every_n=parameter_every_n, sub_modules=sub_modules
         )
 
@@ -797,82 +716,3 @@ class CollectorGradientStats:
         self.hook.stats_gradients[self.name].append(
             GradientStats(mean, std, abs_perc90, _max, frac_dead)
         )
-
-
-class Hook:
-    def __init__(self, module: nn.Module, func: T.Callable, name: str = None):
-        self.hook = module.register_forward_hook(partial(func, self))
-        self.name = name
-
-    def remove(self):
-        self.hook.remove()
-
-    def __del__(self):
-        self.remove()
-
-
-def append_stats(
-    hook,
-    module: nn.Module,
-    input: torch.Tensor,
-    output: torch.Tensor,
-    hist_bins: int = 80,
-    hist_range: T.Tuple[float, float] = (0.0, 10.0),
-):
-    if not hasattr(hook, "stats"):
-        hook.stats = ([], [], [])
-    acts = output.cpu().detach()
-    mean, std = acts.mean().item(), acts.std().item()
-    hist = acts.abs().histc(hist_bins, hist_range[0], hist_range[1])
-    hook.stats[0].append(mean)
-    hook.stats[1].append(std)
-    hook.stats[2].append(hist)
-
-
-def get_hooks(
-    model: Model,
-    hook_func: T.Callable = partial(append_stats, hist_range=(0, 2)),
-) -> T.List[Hook]:
-    # model_acts = [
-    #     model.act_conv1,
-    #     model.act_conv2,
-    #     model.act_lin1,
-    #     model.act_lin2,
-    # ]
-    # act_names = ["act_conv1", "act_conv2", "act_lin1", "act_lin2"]
-    hooks = [
-        Hook(layer, hook_func, name=name)
-        for (name, layer) in model.named_children()
-        if name.startswith("act_")
-    ]
-    return hooks
-
-
-def draw_activation_stats(hooks: T.List[Hook], hist_aspect: float = 10.0):
-    fig, axs = plt.subplots(figsize=(12, 8), nrows=2, sharex=True)
-
-    for h in hooks:
-        axs[0].plot(h.stats[0], label=h.name, alpha=0.5)
-        axs[1].plot(h.stats[1], label=h.name, alpha=0.5)
-
-    axs[0].legend()
-    axs[0].set(title="activation mean")
-    axs[1].legend()
-    axs[1].set(title="activation std")
-    plt.tight_layout()
-
-    for h in hooks:
-        fig, ax = plt.subplots(figsize=(12, 4), nrows=1)
-        hist = torch.stack(h.stats[2]).t().float().log1p().numpy()
-        ax.imshow(hist, aspect=hist_aspect, origin="lower")
-        ax.grid(False)
-        ax.set_axis_off()
-
-        ax.set_title(h.name, fontsize=16)
-        plt.tight_layout()
-
-
-def clear_hooks(hooks: T.List[Hook]):
-    for h in hooks:
-        h.remove()
-    del hooks[:]
