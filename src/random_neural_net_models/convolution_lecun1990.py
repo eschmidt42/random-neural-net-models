@@ -15,6 +15,7 @@ from einops import rearrange
 from einops.layers.torch import Rearrange
 from torch.utils.data import Dataset
 
+import random_neural_net_models.search as search
 import random_neural_net_models.utils as utils
 
 logger = utils.get_logger("convolution_lecun1990.py")
@@ -315,52 +316,146 @@ class GradientStats:
     frac_dead: float
 
 
-class ParameterHistory:
+class ActivationsHistory:
     def __init__(
-        self, model: nn.Module, every_n: int = 1, sub_modules: T.Tuple[str] = ()
+        self,
+        model: nn.Module,
+        every_n: int = 1,
+        name_patterns: T.Tuple[str] = None,
+        max_depth_search: int = 3,
     ):
+        self.not_initialized = name_patterns is None or len(name_patterns) == 0
+        if self.not_initialized:
+            logger.info("Not collecting activation history.")
+            return
+        self.child_search = search.ChildSearch(
+            model, max_depth=max_depth_search
+        )
+        self.activation_modules = self.child_search(*name_patterns)
+        self.hooks = defaultdict(None)
+        self.stats: T.Dict[str, T.List[ActivationStats]] = defaultdict(list)
+
+        for named_module in self.activation_modules:
+            cas = CollectorActivationStats(
+                self, named_module.name, every_n=every_n
+            )
+            self.hooks[
+                named_module.name
+            ] = named_module.module.register_forward_hook(cas)
+
+        logger.info(
+            f"Will collect activiation history every {every_n}th iteration for: {self.name_matches=}"
+        )
+
+    @property
+    def name_matches(self):
+        if self.not_initialized:
+            return []
+        return [a.name for a in self.activation_modules]
+
+    def clean(self):
+        if self.not_initialized:
+            logger.info("No activation hooks to clean up.")
+            return
+        for hook in self.hooks.values():
+            hook.remove()
+        self.hooks.clear()
+
+
+class GradientsHistory:
+    def __init__(
+        self,
+        model: nn.Module,
+        every_n: int = 1,
+        name_patterns: T.Tuple[str] = None,
+        max_depth_search: int = 3,
+    ):
+        self.not_initialized = name_patterns is None or len(name_patterns) == 0
+        if self.not_initialized:
+            logger.info("Not collecting gradient history.")
+            return
+        self.child_search = search.ChildSearch(
+            model, max_depth=max_depth_search
+        )
+        self.gradient_modules = self.child_search(*name_patterns)
+        self.hooks = defaultdict(None)
+        self.stats: T.Dict[str, T.List[ParameterStats]] = defaultdict(list)
+        for named_module in self.gradient_modules:
+            cgs = CollectorGradientStats(
+                self, named_module.name, every_n=every_n
+            )
+            self.hooks[
+                named_module.name
+            ] = named_module.module.register_full_backward_hook(cgs)
+
+        logger.info(
+            f"Will collect gradient history every {every_n}th iteration for: {self.name_matches=}"
+        )
+
+    @property
+    def name_matches(self) -> T.List[str]:
+        if self.not_initialized:
+            return []
+        return [a.name for a in self.gradient_modules]
+
+    def clean(self):
+        if self.not_initialized:
+            logger.info("No gradient hooks to clean up.")
+            return
+        for hook in self.hooks.values():
+            hook.remove()
+        self.hooks.clear()
+
+
+class ParametersHistory:
+    def __init__(
+        self,
+        model: nn.Module,
+        every_n: int = 1,
+        name_patterns: T.Tuple[str] = None,
+        max_depth_search: int = 3,
+    ):
+        self.not_initialized = name_patterns is None or len(name_patterns) == 0
+        if self.not_initialized:
+            logger.info("Not collecting parameter history.")
+            return
         self.history: T.Dict[str, T.List[ParameterStats]] = defaultdict(list)
         self.every_n = every_n
-        self.model = model
-        self.sub_modules = sub_modules
+        self.search = search.ChildSearch(model, max_depth=max_depth_search)
+        self.parameter_modules = self.search(*name_patterns)
+        logger.info(
+            f"Will collect parameter history every {every_n}th iteration for: {self.name_matches=}"
+        )
+
+    @property
+    def name_matches(self):
+        if self.not_initialized:
+            return []
+        return [p.name for p in self.parameter_modules]
 
     def __call__(self, _iter: int):
-        if _iter % self.every_n != 0:
+        if self.not_initialized or _iter % self.every_n != 0:
             return
 
-        state_dict = self.model.state_dict()
-
-        for name, parameter_values in state_dict.items():
-            parameter_values = parameter_values.detach().flatten().float()
-            mean = parameter_values.mean().cpu().item()
-            std = parameter_values.std().cpu().item()
-            abs_perc90 = parameter_values.abs().quantile(0.9).cpu().item()
-            self.history[name].append(
-                ParameterStats(_iter, mean, std, abs_perc90)
-            )
-
-        for sub_module in self.sub_modules:
-            if hasattr(self.model, sub_module):
-                state_dict = getattr(self.model, sub_module).state_dict()
-
-                for name, parameter_values in state_dict.items():
-                    parameter_values = (
-                        parameter_values.detach().flatten().float()
-                    )
-                    mean = parameter_values.mean().cpu().item()
-                    std = parameter_values.std().cpu().item()
-                    abs_perc90 = (
-                        parameter_values.abs().quantile(0.9).cpu().item()
-                    )
-                    self.history[name].append(
-                        ParameterStats(_iter, mean, std, abs_perc90)
-                    )
+        for named_module in self.parameter_modules:
+            state_dict = named_module.module.state_dict()
+            for name, parameter_values in state_dict.items():
+                parameter_values = parameter_values.detach().flatten().float()
+                mean = parameter_values.mean().cpu().item()
+                std = parameter_values.std().cpu().item()
+                abs_perc90 = parameter_values.abs().quantile(0.9).cpu().item()
+                self.history[f"{named_module.name}.{name}"].append(
+                    ParameterStats(_iter, mean, std, abs_perc90)
+                )
 
     def draw(
         self,
         name: str,
         figsize: T.Tuple[int, int] = (12, 7),
     ) -> None:
+        if self.not_initialized:
+            logger.info("Not drawing parameter history.")
+            return
         fig, axs = plt.subplots(figsize=figsize, nrows=2, sharex=True)
 
         ax = axs[0]
@@ -434,6 +529,9 @@ class ParameterHistory:
         plt.show()
 
     def get_df(self, name: str) -> pd.DataFrame:
+        if self.not_initialized:
+            logger.info("Not getting parameter history.")
+            return
         df = pd.DataFrame(self.history[name])
         # print error to log if any column has inf or nan values
         isna = df.isna()
@@ -467,43 +565,27 @@ class ModelTelemetry(nn.Module):
     def __init__(
         self,
         model: nn.Module,
-        func_is_act: T.Callable = check_module_name_is_activation,
-        func_is_grad_relevant: T.Callable = check_module_name_grad_relevant,
         loss_train_every_n: int = 1,
         loss_test_every_n: int = 1,
         parameter_every_n: int = 1,
         activations_every_n: int = 1,
         gradients_every_n: int = 1,
         loss_names: T.Tuple[str] = ("loss",),
-        sub_modules: T.Tuple[str] = (),
+        activation_name_patterns: T.Tuple[str] = None,
+        gradients_name_patterns: T.Tuple[str] = None,
+        parameter_name_patterns: T.Tuple[str] = None,
+        max_depth_search: int = 3,
     ):
         super().__init__()
         self.model = model
 
         # activations bit
-        self.hooks_activations = defaultdict(None)
-        self.stats_activations: T.Dict[
-            str, T.List[ActivationStats]
-        ] = defaultdict(list)
-
-        for name, child in self.model.named_children():
-            if func_is_act(name):
-                cas = CollectorActivationStats(
-                    self, name, every_n=activations_every_n
-                )
-                self.hooks_activations[name] = child.register_forward_hook(cas)
-        for sub_module in sub_modules:
-            if hasattr(self.model, sub_module):
-                for name, child in getattr(
-                    self.model, sub_module
-                ).named_children():
-                    if func_is_act(name):
-                        cas = CollectorActivationStats(
-                            self, name, every_n=activations_every_n
-                        )
-                        self.hooks_activations[
-                            name
-                        ] = child.register_forward_hook(cas)
+        self.activations_history = ActivationsHistory(
+            self.model,
+            every_n=activations_every_n,
+            name_patterns=activation_name_patterns,
+            max_depth_search=max_depth_search,
+        )
 
         # loss bit
         self.loss_history_train = LossHistory(
@@ -514,44 +596,39 @@ class ModelTelemetry(nn.Module):
         )
 
         # parameter bit
-        self.parameter_history = ParameterHistory(
-            self.model, every_n=parameter_every_n, sub_modules=sub_modules
+        self.parameter_history = ParametersHistory(
+            self.model,
+            every_n=parameter_every_n,
+            name_patterns=parameter_name_patterns,
+            max_depth_search=max_depth_search,
         )
 
         # gradient bit
-        self.hooks_gradients = defaultdict(None)
-        self.stats_gradients: T.Dict[str, T.List[ParameterStats]] = defaultdict(
-            list
+        self.gradients_history = GradientsHistory(
+            self.model,
+            every_n=gradients_every_n,
+            name_patterns=gradients_name_patterns,
+            max_depth_search=max_depth_search,
         )
 
-        for name, child in self.model.named_children():
-            if func_is_grad_relevant(name):
-                cgs = CollectorGradientStats(
-                    self, name, every_n=gradients_every_n
-                )
-                self.hooks_gradients[name] = child.register_full_backward_hook(
-                    cgs
-                )
-        for sub_module in sub_modules:
-            if hasattr(self.model, sub_module):
-                for name, child in getattr(
-                    self.model, sub_module
-                ).named_children():
-                    if func_is_grad_relevant(name):
-                        cgs = CollectorGradientStats(
-                            self, name, every_n=gradients_every_n
-                        )
-                        self.hooks_gradients[
-                            name
-                        ] = child.register_full_backward_hook(cgs)
+    @property
+    def name_matches_activations(self):
+        return list(self.activations_history.name_matches)
+
+    @property
+    def name_matches_gradients(self):
+        return list(self.gradients_history.name_matches)
+
+    @property
+    def name_matches_parameters(self):
+        return list(self.parameter_history.name_matches)
 
     def forward(self, x: torch.Tensor):
         return self.model(x)
 
     def clean_hooks(self):
-        for hook in self.hooks_activations.values():
-            hook.remove()
-        self.hooks_activations.clear()
+        self.activations_history.clean()
+        self.gradients_history.clean()
 
     def draw_activation_stats(
         self,
@@ -564,19 +641,19 @@ class ModelTelemetry(nn.Module):
 
         # activation mean
         ax = axs[1]
-        for _name, _stats in self.stats_activations.items():
+        for _name, _stats in self.activations_history.stats.items():
             ax.plot([s.mean for s in _stats], label=_name, alpha=0.5)
         ax.set(title="mean", yscale=yscale)
 
         # activation std
         ax = axs[2]
-        for _name, _stats in self.stats_activations.items():
+        for _name, _stats in self.activations_history.stats.items():
             ax.plot([s.std for s in _stats], label=_name, alpha=0.5)
         ax.set(title="standard deviation", yscale=yscale)
 
         # share of dead neurons
         ax = axs[0]
-        for _name, _stats in self.stats_activations.items():
+        for _name, _stats in self.activations_history.stats.items():
             ax.plot([s.frac_dead for s in _stats], label=_name, alpha=0.5)
         ax.set(title="fraction of dead neurons", xlabel="iter")
 
@@ -597,32 +674,32 @@ class ModelTelemetry(nn.Module):
 
         # gradient mean
         ax = axs[4]
-        for _name, _stats in self.stats_gradients.items():
+        for _name, _stats in self.gradients_history.stats.items():
             ax.plot([s.mean for s in _stats], label=_name, alpha=0.5)
         ax.set(title="mean", yscale=yscale)
 
         # gradient std
         ax = axs[3]
-        for _name, _stats in self.stats_gradients.items():
+        for _name, _stats in self.gradients_history.stats.items():
             ax.plot([s.std for s in _stats], label=_name, alpha=0.5)
         ax.set(title="standard deviation", yscale=yscale)
 
         # abs_perc90
         ax = axs[2]
-        for _name, _stats in self.stats_gradients.items():
+        for _name, _stats in self.gradients_history.stats.items():
             ax.plot([s.abs_perc90 for s in _stats], label=_name, alpha=0.5)
         ax.legend()
         ax.set(title="90%(abs)", yscale=yscale)
 
         # vanishing
         ax = axs[1]
-        for _name, _stats in self.stats_gradients.items():
+        for _name, _stats in self.gradients_history.stats.items():
             ax.plot([s.frac_dead for s in _stats], label=_name, alpha=0.5)
         ax.set(title="frac(dead)")
 
         # exploding
         ax = axs[0]
-        for _name, _stats in self.stats_gradients.items():
+        for _name, _stats in self.gradients_history.stats.items():
             ax.plot([s.max for s in _stats], label=_name, alpha=0.5)
         ax.set(title="max(abs)", xlabel="iter", yscale=yscale)
 
@@ -641,6 +718,8 @@ class ModelTelemetry(nn.Module):
         self.loss_history_test.draw("test", **kwargs)
 
     def draw_parameter_stats(self, *names, **kwargs):
+        if len(names) == 0:
+            names = self.parameter_history.name_matches
         for name in names:
             self.parameter_history.draw(name, **kwargs)
 
@@ -648,7 +727,7 @@ class ModelTelemetry(nn.Module):
 class CollectorActivationStats:
     def __init__(
         self,
-        hook: ModelTelemetry,
+        hook: ActivationsHistory,
         name: str,
         every_n: int = 1,
         threshold_dead=1e-6,
@@ -676,15 +755,13 @@ class CollectorActivationStats:
             acts
         )
 
-        self.hook.stats_activations[self.name].append(
-            ActivationStats(mean, std, frac_dead)
-        )
+        self.hook.stats[self.name].append(ActivationStats(mean, std, frac_dead))
 
 
 class CollectorGradientStats:
     def __init__(
         self,
-        hook: ModelTelemetry,
+        hook: GradientsHistory,
         name: str,
         every_n: int = 1,
         threshold_dead: float = 1e-8,
@@ -713,6 +790,6 @@ class CollectorGradientStats:
             vals
         )
 
-        self.hook.stats_gradients[self.name].append(
+        self.hook.stats[self.name].append(
             GradientStats(mean, std, abs_perc90, _max, frac_dead)
         )
