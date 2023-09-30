@@ -1,12 +1,24 @@
+[bumpver]
+current_version = "0.1.2"
+version_pattern = "MAJOR.MINOR.PATCH"
+
+[bumpver.file_patterns]
+"src/random_neural_net_models/__init__.py" = [
+    '__version__ = "{version}"',
+]
+"pyproject.toml" = [
+    'version = "{version}"$',
+]
+
 [build-system]
 requires = ["setuptools>=65.0","wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "random-neural-net-models"
+version = "0.1.2"
 description = "My implementation of a random selection of artificial neural net based models."
 requires-python = ">=3.10"
-version = "0.1.1"
 authors = [
     {name = "eschmidt42", email="11818904+eschmidt42@users.noreply.github.com"}
 ]
