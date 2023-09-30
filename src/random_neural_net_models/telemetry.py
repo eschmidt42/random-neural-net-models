@@ -16,7 +16,7 @@ import random_neural_net_models.utils as utils
 logger = utils.get_logger("telemetry.py")
 
 
-class ActivationsHistory:
+class History:
     def __init__(
         self,
         model: nn.Module,
@@ -26,32 +26,20 @@ class ActivationsHistory:
     ):
         self.not_initialized = name_patterns is None or len(name_patterns) == 0
         if self.not_initialized:
-            logger.info("Not collecting activation history.")
+            logger.info("Not collecting history.")
             return
+
         self.child_search = search.ChildSearch(
             model, max_depth=max_depth_search
         )
-        self.activation_modules = self.child_search(*name_patterns)
-        self.hooks = defaultdict(None)
-        self.stats: T.Dict[str, T.List[ActivationStats]] = defaultdict(list)
-
-        for named_module in self.activation_modules:
-            cas = CollectorActivationStats(
-                self, named_module.name, every_n=every_n
-            )
-            self.hooks[
-                named_module.name
-            ] = named_module.module.register_forward_hook(cas)
-
-        logger.info(
-            f"Will collect activiation history every {every_n}th iteration for: {self.name_matches=}"
-        )
+        self.every_n = every_n
+        self.modules = self.child_search(*name_patterns)
 
     @property
     def name_matches(self):
         if self.not_initialized:
             return []
-        return [a.name for a in self.activation_modules]
+        return [a.name for a in self.modules]
 
     def clean(self):
         if self.not_initialized:
@@ -62,7 +50,7 @@ class ActivationsHistory:
         self.hooks.clear()
 
 
-class GradientsHistory:
+class ActivationsHistory(History):
     def __init__(
         self,
         model: nn.Module,
@@ -70,44 +58,70 @@ class GradientsHistory:
         name_patterns: T.Tuple[str] = None,
         max_depth_search: int = 3,
     ):
-        self.not_initialized = name_patterns is None or len(name_patterns) == 0
-        if self.not_initialized:
-            logger.info("Not collecting gradient history.")
-            return
+        super().__init__(model, every_n, name_patterns, max_depth_search)
+
+        self.stats: T.Dict[str, T.List[ActivationStats]] = defaultdict(list)
+        self.register_hooks(model, name_patterns, max_depth_search)
+
+    def register_hooks(
+        self,
+        model: nn.Module,
+        name_patterns: T.Tuple[str] = None,
+        max_depth_search: int = 3,
+    ):
+        self.hooks = defaultdict(None)
+
+        for named_module in self.modules:
+            cas = CollectorActivationStats(
+                self, named_module.name, every_n=self.every_n
+            )
+            self.hooks[
+                named_module.name
+            ] = named_module.module.register_forward_hook(cas)
+
+        logger.info(
+            f"Will collect activiation history every {self.every_n}th iteration for: {self.name_matches=}"
+        )
+
+
+class GradientsHistory(History):
+    def __init__(
+        self,
+        model: nn.Module,
+        every_n: int = 1,
+        name_patterns: T.Tuple[str] = None,
+        max_depth_search: int = 3,
+    ):
+        super().__init__(model, every_n, name_patterns, max_depth_search)
+        self.stats: T.Dict[str, T.List[ParameterStats]] = defaultdict(list)
+        self.register_hooks(model, name_patterns, max_depth_search)
+
+    def register_hooks(
+        self,
+        model: nn.Module,
+        name_patterns: T.Tuple[str] = None,
+        max_depth_search: int = 3,
+    ):
         self.child_search = search.ChildSearch(
             model, max_depth=max_depth_search
         )
-        self.gradient_modules = self.child_search(*name_patterns)
+        self.modules = self.child_search(*name_patterns)
         self.hooks = defaultdict(None)
-        self.stats: T.Dict[str, T.List[ParameterStats]] = defaultdict(list)
-        for named_module in self.gradient_modules:
+
+        for named_module in self.modules:
             cgs = CollectorGradientStats(
-                self, named_module.name, every_n=every_n
+                self, named_module.name, every_n=self.every_n
             )
             self.hooks[
                 named_module.name
             ] = named_module.module.register_full_backward_hook(cgs)
 
         logger.info(
-            f"Will collect gradient history every {every_n}th iteration for: {self.name_matches=}"
+            f"Will collect gradient history every {self.every_n}th iteration for: {self.name_matches=}"
         )
 
-    @property
-    def name_matches(self) -> T.List[str]:
-        if self.not_initialized:
-            return []
-        return [a.name for a in self.gradient_modules]
 
-    def clean(self):
-        if self.not_initialized:
-            logger.info("No gradient hooks to clean up.")
-            return
-        for hook in self.hooks.values():
-            hook.remove()
-        self.hooks.clear()
-
-
-class ParametersHistory:
+class ParametersHistory(History):
     def __init__(
         self,
         model: nn.Module,
@@ -115,36 +129,22 @@ class ParametersHistory:
         name_patterns: T.Tuple[str] = None,
         max_depth_search: int = 3,
     ):
-        self.not_initialized = name_patterns is None or len(name_patterns) == 0
-        if self.not_initialized:
-            logger.info("Not collecting parameter history.")
-            return
-        self.history: T.Dict[str, T.List[ParameterStats]] = defaultdict(list)
+        super().__init__(model, every_n, name_patterns, max_depth_search)
+        self.stats: T.Dict[str, T.List[ParameterStats]] = defaultdict(list)
         self.every_n = every_n
-        self.search = search.ChildSearch(model, max_depth=max_depth_search)
-        self.parameter_modules = self.search(*name_patterns)
-        logger.info(
-            f"Will collect parameter history every {every_n}th iteration for: {self.name_matches=}"
-        )
-
-    @property
-    def name_matches(self):
-        if self.not_initialized:
-            return []
-        return [p.name for p in self.parameter_modules]
 
     def __call__(self, _iter: int):
         if self.not_initialized or _iter % self.every_n != 0:
             return
 
-        for named_module in self.parameter_modules:
+        for named_module in self.modules:
             state_dict = named_module.module.state_dict()
             for name, parameter_values in state_dict.items():
                 parameter_values = parameter_values.detach().flatten().float()
                 mean = parameter_values.mean().cpu().item()
                 std = parameter_values.std().cpu().item()
                 abs_perc90 = parameter_values.abs().quantile(0.9).cpu().item()
-                self.history[f"{named_module.name}.{name}"].append(
+                self.stats[f"{named_module.name}.{name}"].append(
                     ParameterStats(_iter, mean, std, abs_perc90)
                 )
 
@@ -232,7 +232,7 @@ class ParametersHistory:
         if self.not_initialized:
             logger.info("Not getting parameter history.")
             return
-        df = pd.DataFrame(self.history[name])
+        df = pd.DataFrame(self.stats[name])
 
         # print error to log if any column has inf or nan values
         isna = df.isna()
