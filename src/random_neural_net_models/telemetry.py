@@ -132,6 +132,9 @@ class ParametersHistory(History):
         super().__init__(model, every_n, name_patterns, max_depth_search)
         self.stats: T.Dict[str, T.List[ParameterStats]] = defaultdict(list)
         self.every_n = every_n
+        logger.info(
+            f"Will collect parameter history every {self.every_n}th iteration for: {self.name_matches=}"
+        )
 
     def __call__(self, _iter: int):
         if self.not_initialized or _iter % self.every_n != 0:
@@ -337,13 +340,13 @@ class ModelTelemetry(nn.Module):
         model: nn.Module,
         loss_train_every_n: int = 1,
         loss_test_every_n: int = 1,
-        parameter_every_n: int = 1,
+        parameters_every_n: int = 1,
         activations_every_n: int = 1,
         gradients_every_n: int = 1,
         loss_names: T.Tuple[str] = ("loss",),
-        activation_name_patterns: T.Tuple[str] = None,
+        activations_name_patterns: T.Tuple[str] = None,
         gradients_name_patterns: T.Tuple[str] = None,
-        parameter_name_patterns: T.Tuple[str] = None,
+        parameters_name_patterns: T.Tuple[str] = None,
         max_depth_search: int = 3,
     ):
         super().__init__()
@@ -353,7 +356,7 @@ class ModelTelemetry(nn.Module):
         self.activations_history = ActivationsHistory(
             self.model,
             every_n=activations_every_n,
-            name_patterns=activation_name_patterns,
+            name_patterns=activations_name_patterns,
             max_depth_search=max_depth_search,
         )
 
@@ -368,8 +371,8 @@ class ModelTelemetry(nn.Module):
         # parameter bit
         self.parameter_history = ParametersHistory(
             self.model,
-            every_n=parameter_every_n,
-            name_patterns=parameter_name_patterns,
+            every_n=parameters_every_n,
+            name_patterns=parameters_name_patterns,
             max_depth_search=max_depth_search,
         )
 
