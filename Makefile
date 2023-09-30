@@ -10,6 +10,8 @@ help:
 	@echo "compile-upgrade : upgrade the environment requirements."
 	@echo "update          : pip install new requriements into the virtual environment."
 	@echo "test            : run pytests."
+	@echo "bump-patch      : bump the patch version."
+	@echo "bump-minor      : bump the minor version."
 
 # create a virtual environment
 .PHONY: venv
@@ -89,3 +91,17 @@ update:
 test:
 	source .venv/bin/activate && \
 	pytest -vx .
+
+# ==============================================================================
+# bump version
+# ==============================================================================
+
+.PHONY: bump-patch
+bump-patch:
+	source .venv/bin/activate && \
+	bumpver --patch
+
+.PHONY: bump-minor
+bump-minor:
+	source .venv/bin/activate && \
+	bumpver --minor

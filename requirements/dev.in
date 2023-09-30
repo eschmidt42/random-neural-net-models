@@ -8,3 +8,4 @@ jupyterlab
 jupyter-contrib-nbextensions
 ipywidgets
 torchinfo
+bumpver
