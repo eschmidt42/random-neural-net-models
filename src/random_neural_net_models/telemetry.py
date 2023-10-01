@@ -121,6 +121,10 @@ class GradientsHistory(History):
         )
 
 
+class HistoryException(Exception):
+    pass
+
+
 class ParametersHistory(History):
     def __init__(
         self,
@@ -244,7 +248,7 @@ class ParametersHistory(History):
                 isna.mean().sort_values(ascending=False).rename("fraction")
             )
             mean_na.index.name = "column"
-            logger.error(
+            raise HistoryException(
                 f"{name=} df has missing values: {mean_na.to_markdown()}"
             )
 
@@ -254,11 +258,13 @@ class ParametersHistory(History):
                 isinf.mean().sort_values(ascending=False).rename("fraction")
             )
             mean_inf.index.name = "column"
-            logger.error(f"{name=} df has inf values: {mean_inf.to_markdown()}")
+            raise HistoryException(
+                f"{name=} df has inf values: {mean_inf.to_markdown()}"
+            )
 
         # print error if df is empty
         if len(df) == 0:
-            logger.error(f"{name=} df is empty")
+            raise HistoryException(f"{name=} df is empty")
 
         return df
 
@@ -494,7 +500,10 @@ class ModelTelemetry(nn.Module):
         if len(names) == 0:
             names = self.parameter_history.name_matches
         for name in names:
-            self.parameter_history.draw(name, **kwargs)
+            try:
+                self.parameter_history.draw(name, **kwargs)
+            except HistoryException as e:
+                logger.error(e)
 
 
 class LossHistory:
