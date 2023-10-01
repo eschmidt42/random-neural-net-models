@@ -80,13 +80,4 @@ class ResNet(nn.Module):
         )
 
     def forward(self, x: torch.Tensor):
-        # logger.debug(f"input shape: {x.shape}")
-        # x = self.add_dim(x)
-        # logger.debug(f"add_dim shape: {x.shape}")
-        # x = self.resblocks(x)
-        # logger.debug(f"resblock shape: {x.shape}")
-        # x = self.flatten(x)
-        # logger.debug(f"flatten shape: {x.shape}")
-        # return self.lin(x)
-
         return self.net(x)
