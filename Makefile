@@ -99,9 +99,9 @@ test:
 .PHONY: bump-patch
 bump-patch:
 	source .venv/bin/activate && \
-	bumpver --patch
+	bumpver update --patch
 
 .PHONY: bump-minor
 bump-minor:
 	source .venv/bin/activate && \
-	bumpver --minor
+	bumpver update --minor
