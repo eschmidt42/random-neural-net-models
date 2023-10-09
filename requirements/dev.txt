@@ -170,6 +170,8 @@ jupyterlab-widgets==3.0.9
     # via ipywidgets
 lexid==2021.1006
     # via bumpver
+line-profiler==4.1.1
+    # via -r requirements/dev.in
 looseversion==1.3.0
     # via bumpver
 lxml==4.9.3
