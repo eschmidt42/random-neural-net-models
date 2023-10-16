@@ -20,7 +20,7 @@ Package only:
 
 ## Usage
 
-See jupyter notebooks in `nbs/` for:
+See jupyter notebooks in [`nbs/`](https://github.com/eschmidt42/random-neural-net-models/tree/main/nbs) for:
 * perceptron: `perceptron.ipynb`
 * backpropagation: `backpropagation_rumelhart1986.ipynb`
 * convolution: `convolution_lecun1990.ipynb`
