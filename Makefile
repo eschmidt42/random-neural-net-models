@@ -7,6 +7,7 @@ help:
 	@echo "install         : install dependencies into virtual environment."
 	@echo "install-gh-test : install dependencies required in .github/workflows/test.yml."
 	@echo "compile         : update the environment requirements after changes to dependencies in requirements/*.in files."
+	@echo "compile-dev     : update the dev environment requirements after changes to requirements/dev.in."
 	@echo "compile-upgrade : upgrade the environment requirements."
 	@echo "update          : pip install new requriements into the virtual environment."
 	@echo "test            : run pytests."
@@ -40,6 +41,11 @@ compile:
 	pip-compile $(req-core-in) -o $(req-core-out) --resolver=backtracking && \
 	pip-compile $(req-test-in) -o $(req-test-out) --resolver=backtracking && \
 	pip-compile $(req-publish-in) -o $(req-publish-out) --resolver=backtracking && \
+	pip-compile $(req-dev-in) -o $(req-dev-out) --resolver=backtracking
+
+.PHONY: compile-dev
+compile-dev:
+	source .venv/bin/activate && \
 	pip-compile $(req-dev-in) -o $(req-dev-out) --resolver=backtracking
 
 .PHONY: compile-upgrade

@@ -9,3 +9,4 @@ jupyter-contrib-nbextensions
 ipywidgets
 torchinfo
 bumpver
+line_profiler

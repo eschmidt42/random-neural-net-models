@@ -4,30 +4,28 @@
 #
 #    pip-compile --config=pyproject.toml --output-file=requirements/core.txt --resolver=backtracking requirements/core.in
 #
-annotated-types==0.5.0
+annotated-types==0.6.0
     # via pydantic
-cmake==3.27.4.1
-    # via triton
-contourpy==1.1.0
+contourpy==1.1.1
     # via matplotlib
-cycler==0.11.0
+cycler==0.12.1
     # via matplotlib
-einops==0.6.1
+einops==0.7.0
     # via -r requirements/core.in
 filelock==3.12.4
     # via
     #   torch
     #   triton
-fonttools==4.42.1
+fonttools==4.43.1
     # via matplotlib
+fsspec==2023.9.2
+    # via torch
 jinja2==3.1.2
     # via torch
 joblib==1.3.2
     # via scikit-learn
 kiwisolver==1.4.5
     # via matplotlib
-lit==16.0.6
-    # via triton
 markdown-it-py==3.0.0
     # via rich
 markupsafe==2.1.3
@@ -42,7 +40,7 @@ mpmath==1.3.0
     # via sympy
 networkx==3.1
     # via torch
-numpy==1.25.2
+numpy==1.26.0
     # via
     #   -r requirements/core.in
     #   contourpy
@@ -51,42 +49,48 @@ numpy==1.25.2
     #   scikit-learn
     #   scipy
     #   seaborn
-nvidia-cublas-cu11==11.10.3.66
+nvidia-cublas-cu12==12.1.3.1
     # via
-    #   nvidia-cudnn-cu11
-    #   nvidia-cusolver-cu11
+    #   nvidia-cudnn-cu12
+    #   nvidia-cusolver-cu12
     #   torch
-nvidia-cuda-cupti-cu11==11.7.101
+nvidia-cuda-cupti-cu12==12.1.105
     # via torch
-nvidia-cuda-nvrtc-cu11==11.7.99
+nvidia-cuda-nvrtc-cu12==12.1.105
     # via torch
-nvidia-cuda-runtime-cu11==11.7.99
+nvidia-cuda-runtime-cu12==12.1.105
     # via torch
-nvidia-cudnn-cu11==8.5.0.96
+nvidia-cudnn-cu12==8.9.2.26
     # via torch
-nvidia-cufft-cu11==10.9.0.58
+nvidia-cufft-cu12==11.0.2.54
     # via torch
-nvidia-curand-cu11==10.2.10.91
+nvidia-curand-cu12==10.3.2.106
     # via torch
-nvidia-cusolver-cu11==11.4.0.1
+nvidia-cusolver-cu12==11.4.5.107
     # via torch
-nvidia-cusparse-cu11==11.7.4.91
+nvidia-cusparse-cu12==12.1.0.106
+    # via
+    #   nvidia-cusolver-cu12
+    #   torch
+nvidia-nccl-cu12==2.18.1
     # via torch
-nvidia-nccl-cu11==2.14.3
+nvidia-nvjitlink-cu12==12.2.140
+    # via
+    #   nvidia-cusolver-cu12
+    #   nvidia-cusparse-cu12
+nvidia-nvtx-cu12==12.1.105
     # via torch
-nvidia-nvtx-cu11==11.7.91
-    # via torch
-packaging==23.1
+packaging==23.2
     # via matplotlib
-pandas==2.1.0
+pandas==2.1.1
     # via
     #   -r requirements/core.in
     #   seaborn
-pillow==10.0.0
+pillow==10.0.1
     # via matplotlib
-pydantic==2.3.0
+pydantic==2.4.2
     # via -r requirements/core.in
-pydantic-core==2.6.3
+pydantic-core==2.10.1
     # via pydantic
 pygments==2.16.1
     # via rich
@@ -98,13 +102,13 @@ python-dateutil==2.8.2
     #   pandas
 pytz==2023.3.post1
     # via pandas
-rich==13.5.2
+rich==13.6.0
     # via -r requirements/core.in
-scikit-learn==1.3.0
+scikit-learn==1.3.1
     # via -r requirements/core.in
-scipy==1.11.2
+scipy==1.11.3
     # via scikit-learn
-seaborn==0.12.2
+seaborn==0.13.0
     # via -r requirements/core.in
 six==1.16.0
     # via python-dateutil
@@ -114,29 +118,16 @@ tabulate==0.9.0
     # via -r requirements/core.in
 threadpoolctl==3.2.0
     # via scikit-learn
-torch==2.0.1
-    # via
-    #   -r requirements/core.in
-    #   triton
+torch==2.1.0
+    # via -r requirements/core.in
 tqdm==4.66.1
     # via -r requirements/core.in
-triton==2.0.0
+triton==2.1.0
     # via torch
-typing-extensions==4.7.1
+typing-extensions==4.8.0
     # via
     #   pydantic
     #   pydantic-core
     #   torch
 tzdata==2023.3
     # via pandas
-wheel==0.41.2
-    # via
-    #   nvidia-cublas-cu11
-    #   nvidia-cuda-cupti-cu11
-    #   nvidia-cuda-runtime-cu11
-    #   nvidia-curand-cu11
-    #   nvidia-cusparse-cu11
-    #   nvidia-nvtx-cu11
-
-# The following packages are considered to be unsafe in a requirements file:
-# setuptools
