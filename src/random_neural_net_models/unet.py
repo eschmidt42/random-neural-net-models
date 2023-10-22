@@ -8,7 +8,7 @@ from einops.layers.torch import Rearrange
 
 import random_neural_net_models.utils as utils
 
-logger = utils.get_logger("resnet.py")
+logger = utils.get_logger("unet.py")
 
 
 def get_conv_pieces(
