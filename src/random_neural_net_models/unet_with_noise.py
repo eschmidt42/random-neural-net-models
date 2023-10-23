@@ -3,12 +3,16 @@
 import math
 import typing as T
 
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import tqdm
 from einops import rearrange
 from einops.layers.torch import Rearrange
 
+import random_neural_net_models.telemetry as telemetry
 import random_neural_net_models.unet as unet
 import random_neural_net_models.utils as utils
 
@@ -440,3 +444,157 @@ class UNetModel(nn.Module):
         x = self.wrangle_output(x)
 
         return x
+
+
+def list_of_tuples_to_tensors(
+    batch: T.List[T.Tuple[torch.Tensor, int]]
+) -> T.Tuple[torch.Tensor, torch.Tensor]:
+    images, labels = zip(*batch)
+    images = torch.stack(images)
+    labels = torch.tensor(labels, dtype=int)
+    return images, labels
+
+
+SIG_DATA = 0.66
+
+
+def get_cs(
+    sig: torch.Tensor,
+) -> T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    # TODO: wtf is happening here?
+    totvar = sig**2 + SIG_DATA**2
+    c_skip = SIG_DATA**2 / totvar
+    c_out = sig * SIG_DATA / totvar.sqrt()
+    c_in = 1 / totvar.sqrt()
+    return c_skip, c_out, c_in
+
+
+def draw_sig_from_noise_prior(n: int) -> torch.Tensor:
+    "Draws noise level (prior) from a log normal distribution"
+    sig = torch.randn(n)
+    sig = 1.2 * sig - 1.2
+    sig = sig.exp()
+    return sig
+
+
+def draw_img_noise_given_sig(
+    sig: torch.Tensor,
+    images: torch.Tensor = None,
+    images_shape: T.Tuple[int, int, int] = None,
+) -> torch.Tensor:
+    "Draws noise from a normal distribution given the noise level (sig)"
+    if images is not None:
+        images_shape = images.shape
+
+    noise = torch.randn(images_shape)
+    noise = noise * sig
+    return noise
+
+
+def fudge_original_images(images: torch.Tensor) -> torch.Tensor:
+    return images * 2 - 1
+
+
+def apply_noise(
+    batch: T.List[T.Tuple[torch.Tensor, int]]
+) -> T.Tuple[T.Tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
+    "Applies noise to the input image and returns the noisy image, the noise level and the de-noised image"
+
+    orig_images, _ = list_of_tuples_to_tensors(batch)
+
+    orig_images = fudge_original_images(orig_images)
+
+    # drawing noise level (prior) from a log normal distribution
+    sig = draw_sig_from_noise_prior(orig_images.shape[0])
+    sig = sig.reshape(-1, 1, 1)
+
+    c_skip, c_out, c_in = get_cs(sig)
+
+    # adding noise to the image
+    noise = draw_img_noise_given_sig(sig, images=orig_images)
+    noisy_images = orig_images + noise
+
+    target_noise = (orig_images - c_skip * noisy_images) / c_out
+    noisy_images = noisy_images * c_in
+
+    sig = sig.squeeze()
+
+    return (noisy_images, sig), target_noise
+
+
+def get_denoised_images(
+    noisy_images: torch.Tensor, noises: torch.Tensor, sig: torch.Tensor
+) -> torch.Tensor:
+    "Returns the de-noised images given the noisy images, noise and the noise level (sig)"
+    c_skip, c_out, c_in = get_cs(sig)
+    denoised_images = noises * c_out + (noisy_images / c_in) * c_skip
+    return denoised_images
+
+
+def compare_input_noise_and_denoised_image(
+    noisy_image: torch.Tensor,
+    noise: torch.Tensor,
+    denoised_image: torch.Tensor,
+    bin_bounds: T.Tuple[int, int] = (-3, 3),
+    figsize: T.Tuple[int, int] = (10, 10),
+    title: str = None,
+):
+    fig, axs = plt.subplots(nrows=3, ncols=2, figsize=figsize)
+
+    # images
+    ax = axs[0, 0]
+    ax.imshow(noisy_image, cmap="gray")
+    ax.set_title("Noisy input image")
+    ax.axis("off")
+    ax = axs[1, 0]
+    ax.imshow(noise, cmap="gray")
+    ax.set_title("Noise")
+    ax.axis("off")
+    ax = axs[2, 0]
+    ax.imshow(denoised_image, cmap="gray")
+    ax.set_title("Denoised image")
+    ax.axis("off")
+
+    # histograms
+    lb, ub = bin_bounds
+    bins = np.linspace(lb, ub, 100)
+
+    ax = axs[0, 1]
+    ax.hist(noisy_image.flatten(), bins=bins)
+    ax.set_title("Noisy input image")
+    ax = axs[1, 1]
+    ax.hist(noise.flatten(), bins=bins)
+    ax.set_title("Noise")
+    ax = axs[2, 1]
+    ax.hist(denoised_image.flatten(), bins=bins)
+    ax.set_title("Denoised image")
+
+    if title:
+        fig.suptitle(title)
+
+    plt.tight_layout()
+
+    plt.show()
+
+
+def denoise_with_model(
+    model: telemetry.ModelTelemetry, images: torch.Tensor, sigs: torch.Tensor
+) -> T.Tuple[T.List[torch.Tensor], T.List[torch.Tensor]]:
+    "Denoises an image with the model for a range of noise levels"
+    noise_preds = []
+    denoised_preds = []
+    for sig in tqdm.tqdm(sigs, total=len(sigs), desc="Sigmas"):
+        _sigs = sig.repeat(images.shape[0])
+
+        c_skip, c_out, c_in = get_cs(_sigs.reshape(-1, 1, 1))
+        images = images * c_in
+
+        pred_noise = model(images, _sigs)
+
+        images = get_denoised_images(
+            images, pred_noise, _sigs.reshape(-1, 1, 1)
+        )
+
+        noise_preds.append(pred_noise.detach().cpu())
+        denoised_preds.append(images.detach().cpu())
+    return noise_preds, denoised_preds
