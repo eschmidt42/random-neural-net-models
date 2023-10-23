@@ -402,8 +402,8 @@ class ModelTelemetry(nn.Module):
     def name_matches_parameters(self):
         return list(self.parameter_history.name_matches)
 
-    def forward(self, x: torch.Tensor):
-        return self.model(x)
+    def forward(self, *args, **kwargs):
+        return self.model(*args, **kwargs)
 
     def clean_hooks(self):
         self.activations_history.clean()

@@ -33,3 +33,4 @@ See jupyter notebooks in [`nbs/`](https://github.com/eschmidt42/random-neural-ne
 * optimizers: `stochastic_optimization_methods.ipynb`
 * resnet: `resnet_fastai2022.ipynb`
 * unet: `unet_fastai2022.ipynb`
+* diffusion (unet + noise): `diffusion_fastai2022.ipynb`
