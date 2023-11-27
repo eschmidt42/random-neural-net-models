@@ -6,18 +6,24 @@
 #
 build==1.0.3
     # via -r requirements/publish.in
-certifi==2023.7.22
-    # via requests
+certifi==2023.11.17
+    # via
+    #   -c requirements/core.txt
+    #   requests
 cffi==1.16.0
     # via cryptography
-charset-normalizer==3.3.0
-    # via requests
+charset-normalizer==3.3.2
+    # via
+    #   -c requirements/core.txt
+    #   requests
 cryptography==41.0.4
     # via secretstorage
 docutils==0.20.1
     # via readme-renderer
-idna==3.4
-    # via requests
+idna==3.6
+    # via
+    #   -c requirements/core.txt
+    #   requests
 importlib-metadata==6.8.0
     # via
     #   keyring
@@ -61,6 +67,7 @@ readme-renderer==42.0
     # via twine
 requests==2.31.0
     # via
+    #   -c requirements/core.txt
     #   requests-toolbelt
     #   twine
 requests-toolbelt==1.0.0
@@ -75,8 +82,9 @@ secretstorage==3.3.3
     # via keyring
 twine==4.0.2
     # via -r requirements/publish.in
-urllib3==2.0.6
+urllib3==2.1.0
     # via
+    #   -c requirements/core.txt
     #   requests
     #   twine
 zipp==3.17.0
