@@ -162,7 +162,7 @@ class GPT(nn.Module):
         C.attn_pdrop = attn_pdrop
         return C
 
-    def __init__(self, config):
+    def __init__(self, config: CN):
         super().__init__()
         assert config.vocab_size is not None
         assert config.block_size is not None
