@@ -15,9 +15,10 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
+import random_neural_net_models.mingpt.configs as configs
 import random_neural_net_models.mingpt.utils as utils
 
-CN = utils.CfgNode
+# CN = utils.CfgNode
 
 # -----------------------------------------------------------------------------
 
@@ -132,37 +133,33 @@ class Block(nn.Module):
         return x
 
 
+MODEL_CONFIGS = {
+    # names follow the huggingface naming conventions
+    # GPT-1
+    "openai-gpt": dict(n_layer=12, n_head=12, n_embd=768),  # 117M params
+    # GPT-2 configs
+    "gpt2": dict(n_layer=12, n_head=12, n_embd=768),  # 124M params
+    "gpt2-medium": dict(n_layer=24, n_head=16, n_embd=1024),  # 350M params
+    "gpt2-large": dict(n_layer=36, n_head=20, n_embd=1280),  # 774M params
+    "gpt2-xl": dict(n_layer=48, n_head=25, n_embd=1600),  # 1558M params
+    # Gophers
+    "gopher-44m": dict(n_layer=8, n_head=16, n_embd=512),
+    # (there are a number more...)
+    # I made these tiny models up
+    "gpt-mini": dict(n_layer=6, n_head=6, n_embd=192),
+    "gpt-micro": dict(n_layer=4, n_head=4, n_embd=128),
+    "gpt-nano": dict(n_layer=3, n_head=3, n_embd=48),
+}
+
+
 class GPT(nn.Module):
     """GPT Language Model"""
 
     @staticmethod
-    def get_config(
-        model_type: str = "gpt",
-        n_layer: int = None,
-        n_head: int = None,
-        n_embd: int = None,
-        vocab_size: int = None,
-        block_size: int = None,
-        embd_pdrop: float = 0.1,
-        resid_pdrop: float = 0.1,
-        attn_pdrop: float = 0.1,
-    ) -> CN:
-        C = CN()
-        # either model_type or (n_layer, n_head, n_embd) must be given in the config
-        C.model_type = model_type
-        C.n_layer = n_layer
-        C.n_head = n_head
-        C.n_embd = n_embd
-        # these options must be filled in externally
-        C.vocab_size = vocab_size
-        C.block_size = block_size
-        # dropout hyperparameters
-        C.embd_pdrop = embd_pdrop
-        C.resid_pdrop = resid_pdrop
-        C.attn_pdrop = attn_pdrop
-        return C
+    def get_config(**kwargs) -> configs.ModelConfig:
+        return configs.ModelConfig(**kwargs)
 
-    def __init__(self, config: CN):
+    def __init__(self, config: configs.ModelConfig):
         super().__init__()
         assert config.vocab_size is not None
         assert config.block_size is not None
@@ -179,34 +176,8 @@ class GPT(nn.Module):
         assert type_given ^ params_given  # exactly one of these (XOR)
         if type_given:
             # translate from model_type to detailed configuration
-            config.merge_from_dict(
-                {
-                    # names follow the huggingface naming conventions
-                    # GPT-1
-                    "openai-gpt": dict(
-                        n_layer=12, n_head=12, n_embd=768
-                    ),  # 117M params
-                    # GPT-2 configs
-                    "gpt2": dict(
-                        n_layer=12, n_head=12, n_embd=768
-                    ),  # 124M params
-                    "gpt2-medium": dict(
-                        n_layer=24, n_head=16, n_embd=1024
-                    ),  # 350M params
-                    "gpt2-large": dict(
-                        n_layer=36, n_head=20, n_embd=1280
-                    ),  # 774M params
-                    "gpt2-xl": dict(
-                        n_layer=48, n_head=25, n_embd=1600
-                    ),  # 1558M params
-                    # Gophers
-                    "gopher-44m": dict(n_layer=8, n_head=16, n_embd=512),
-                    # (there are a number more...)
-                    # I made these tiny models up
-                    "gpt-mini": dict(n_layer=6, n_head=6, n_embd=192),
-                    "gpt-micro": dict(n_layer=4, n_head=4, n_embd=128),
-                    "gpt-nano": dict(n_layer=3, n_head=3, n_embd=48),
-                }[config.model_type]
+            config = configs.get_modified_model_config(
+                config, **MODEL_CONFIGS[config.model_type]
             )
 
         self.transformer = nn.ModuleDict(
@@ -253,10 +224,9 @@ class GPT(nn.Module):
         from transformers import GPT2LMHeadModel
 
         # create a from-scratch initialized minGPT model
-        config = cls.get_config()
-        config.model_type = model_type
-        config.vocab_size = 50257  # openai's model vocabulary
-        config.block_size = 1024  # openai's model block_size
+        config = cls.get_config(
+            model_type=model_type, vocab_size=50257, block_size=1024
+        )
         model = GPT(config)
         sd = model.state_dict()
 

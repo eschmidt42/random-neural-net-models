@@ -4,44 +4,41 @@ Trains a character-level language model.
 """
 
 import torch
+from pydantic.dataclasses import dataclass
 from torch.utils.data import Dataset
 
-import random_neural_net_models.mingpt.model as gpt_model
-import random_neural_net_models.mingpt.trainer as trainer
-import random_neural_net_models.mingpt.utils as gpt_utils
-
-GPT = gpt_model.GPT
-Trainer = trainer.Trainer
-set_seed = gpt_utils.set_seed
-setup_logging = gpt_utils.setup_logging
-CN = gpt_utils.CfgNode
-
+import random_neural_net_models.mingpt.configs as configs
 
 # -----------------------------------------------------------------------------
 
 
-def get_config():
-    C = CN()
+@dataclass(frozen=True)
+class DataConfig:
+    block_size: int
 
-    # system
-    C.system = CN()
-    C.system.seed = 3407
-    C.system.work_dir = "./out/chargpt"
 
-    # data
-    C.data = CharDataset.get_config()
+@dataclass(frozen=True)
+class CharConfig:
+    system: configs.SystemConfig
+    data: DataConfig
+    model: configs.ModelConfig
+    trainer: configs.TrainerConfig
 
-    # model
-    C.model = GPT.get_config()
-    C.model.model_type = "gpt-mini"
 
-    # trainer
-    C.trainer = Trainer.get_config()
-    C.trainer.learning_rate = (
-        5e-4  # the model we're using is so small that we can go a bit faster
+def get_config(vocab_size: int, block_size: int, max_iters: int) -> CharConfig:
+    return CharConfig(
+        system=configs.SystemConfig(seed=3407, work_dir="./out/chargpt"),
+        data=DataConfig(block_size=128),
+        model=configs.ModelConfig(
+            model_type="gpt-mini",
+            vocab_size=vocab_size,
+            block_size=block_size,
+        ),
+        trainer=configs.TrainerConfig(
+            max_iters=max_iters,
+            learning_rate=5e-4,  # the model we're using is so small that we can go a bit faster
+        ),
     )
-
-    return C
 
 
 # -----------------------------------------------------------------------------
@@ -53,10 +50,8 @@ class CharDataset(Dataset):
     """
 
     @staticmethod
-    def get_config():
-        C = CN()
-        C.block_size = 128
-        return C
+    def get_config() -> DataConfig:
+        return DataConfig(block_size=128)
 
     def __init__(self, config, data):
         self.config = config

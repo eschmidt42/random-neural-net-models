@@ -4,44 +4,41 @@ Trains a GPT to add n-digit numbers.
 """
 
 import torch
+from pydantic.dataclasses import dataclass
 from torch.utils.data import Dataset
 
-import random_neural_net_models.mingpt.model as gpt_model
-import random_neural_net_models.mingpt.trainer as trainer
-import random_neural_net_models.mingpt.utils as gpt_utils
-
-GPT = gpt_model.GPT
-Trainer = trainer.Trainer
-set_seed = gpt_utils.set_seed
-setup_logging = gpt_utils.setup_logging
-CN = gpt_utils.CfgNode
-
+import random_neural_net_models.mingpt.configs as configs
 
 # -----------------------------------------------------------------------------
 
 
-def get_config() -> CN:
-    C = CN()
+@dataclass(frozen=True)
+class DataConfig:
+    ndigit: int
 
-    # system
-    C.system = CN()
-    C.system.seed = 3407
-    C.system.work_dir = "./out/adder"
 
-    # data
-    C.data = AdditionDataset.get_config()
+@dataclass(frozen=True)
+class AdderConfig:
+    system: configs.SystemConfig
+    data: DataConfig
+    model: configs.ModelConfig
+    trainer: configs.TrainerConfig
 
-    # model
-    C.model = GPT.get_config()
-    C.model.model_type = "gpt-nano"
 
-    # trainer
-    C.trainer = Trainer.get_config()
-    C.trainer.learning_rate = (
-        5e-4  # the model we're using is so small that we can go a bit faster
+def get_config(vocab_size: int, block_size: int, max_iters: int) -> AdderConfig:
+    return AdderConfig(
+        system=configs.SystemConfig(seed=3407, work_dir="./out/adder"),
+        data=DataConfig(ndigit=2),
+        model=configs.ModelConfig(
+            model_type="gpt-nano",
+            vocab_size=vocab_size,
+            block_size=block_size,
+        ),
+        trainer=configs.TrainerConfig(
+            max_iters=max_iters,
+            learning_rate=5e-4,  # the model we're using is so small that we can go a bit faster
+        ),
     )
-
-    return C
 
 
 # -----------------------------------------------------------------------------
@@ -73,12 +70,10 @@ class AdditionDataset(Dataset):
     """
 
     @staticmethod
-    def get_config():
-        C = CN()
-        C.ndigit = 2
-        return C
+    def get_config(ndigit: int = 2) -> DataConfig:
+        return DataConfig(ndigit=ndigit)
 
-    def __init__(self, config, split):
+    def __init__(self, config: DataConfig, split):
         self.config = config
         self.split = split  # train/test
 

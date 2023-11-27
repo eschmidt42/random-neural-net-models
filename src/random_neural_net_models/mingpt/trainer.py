@@ -11,36 +11,13 @@ from collections import defaultdict
 import torch
 from torch.utils.data.dataloader import DataLoader
 
-import random_neural_net_models.mingpt.utils as utils
-
-CN = utils.CfgNode
+import random_neural_net_models.mingpt.configs as configs
 
 
 class Trainer:
     @staticmethod
-    def get_config(
-        device: str = "auto",
-        num_workers: int = 4,
-        max_iters: int = None,
-        batch_size: int = 64,
-        learning_rate: float = 3e-4,
-        betas: T.Tuple[float, float] = (0.9, 0.95),
-        weight_decay: float = 0.1,
-        grad_norm_clip: float = 1.0,
-    ) -> CN:
-        C = CN()
-        # device to train on
-        C.device = device
-        # dataloder parameters
-        C.num_workers = num_workers
-        # optimizer parameters
-        C.max_iters = max_iters
-        C.batch_size = batch_size
-        C.learning_rate = learning_rate
-        C.betas = betas
-        C.weight_decay = weight_decay  # only applied on matmul weights
-        C.grad_norm_clip = grad_norm_clip
-        return C
+    def get_config(**kwargs) -> configs.TrainerConfig:
+        return configs.TrainerConfig(**kwargs)
 
     def __init__(self, config, model, train_dataset):
         self.config = config

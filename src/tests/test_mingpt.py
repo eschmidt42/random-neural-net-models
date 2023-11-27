@@ -23,7 +23,7 @@ def test_mingpt_sort():
 
     train_config = gpt_trainer.Trainer.get_config(
         learning_rate=5e-4,  # the model we're using is so small that we can go a bit faster
-        max_iters=200,
+        max_iters=100,
         num_workers=0,
     )
 
@@ -32,35 +32,35 @@ def test_mingpt_sort():
     trainer.run()
 
     n = train_dataset.length  # naugy direct access shrug
-    inp = torch.tensor([[0, 0, 2, 1, 0, 1]], dtype=torch.long).to(
+    _input = torch.tensor([[0, 0, 2, 1, 0, 1]], dtype=torch.long).to(
         trainer.device
     )
 
     with torch.no_grad():
-        cat = model.generate(inp, n, do_sample=False)
+        _inference = model.generate(_input, n, do_sample=False)
 
     # generated output is as expected
     assert torch.allclose(
-        cat[:, n:], torch.tensor([[0, 0, 0, 1, 1, 2]], dtype=torch.long)
+        _inference[:, n:], torch.tensor([[0, 0, 0, 1, 1, 2]], dtype=torch.long)
     )
 
 
 def test_mingpt_adder():
-    config = adder.get_config()
-    gpt_utils.setup_logging(config)
+    data_config = adder.DataConfig(ndigit=2)
+    # construct train and test datasets
+    train_dataset = adder.AdditionDataset(data_config, split="train")
+    test_dataset = adder.AdditionDataset(data_config, split="test")
+
+    config = adder.get_config(
+        vocab_size=train_dataset.get_vocab_size(),
+        block_size=train_dataset.get_block_size(),
+        max_iters=100,
+    )
+
     gpt_utils.set_seed(config.system.seed)
 
-    # construct train and test datasets
-    train_dataset = adder.AdditionDataset(config.data, split="train")
-    test_dataset = adder.AdditionDataset(config.data, split="test")
-
     # construct the model
-    config.model.vocab_size = train_dataset.get_vocab_size()
-    config.model.block_size = train_dataset.get_block_size()
-
     model = gpt_model.GPT(config.model)
-
-    config.trainer.max_iters = 100
 
     # construct the trainer object
     trainer = gpt_trainer.Trainer(config.trainer, model, train_dataset)
@@ -80,25 +80,23 @@ def test_mingpt_adder():
 
 
 def test_mingpt_chargpt():
-    # get default config and overrides from the command line, if any
-    config = chargpt.get_config()
-
-    gpt_utils.setup_logging(config)
-    gpt_utils.set_seed(config.system.seed)
+    data_config = chargpt.DataConfig(block_size=128)
 
     # construct the training dataset
-    text = open(
-        "data/tiny-shakespear.txt", "r"
-    ).read()  # don't worry we won't run out of file handles
-    train_dataset = chargpt.CharDataset(config.data, text)
+    text = open("data/tiny-shakespear.txt", "r").read()
+    train_dataset = chargpt.CharDataset(data_config, text)
+
+    # get default config and overrides from the command line, if any
+    config = chargpt.get_config(
+        max_iters=10,
+        vocab_size=train_dataset.get_vocab_size(),
+        block_size=train_dataset.get_block_size(),
+    )
+
+    gpt_utils.set_seed(config.system.seed)
 
     # construct the model
-    config.model.vocab_size = train_dataset.get_vocab_size()
-    config.model.block_size = train_dataset.get_block_size()
-
     model = gpt_model.GPT(config.model)
-
-    config.trainer.max_iters = 10
 
     # construct the trainer object
     trainer = gpt_trainer.Trainer(config.trainer, model, train_dataset)
