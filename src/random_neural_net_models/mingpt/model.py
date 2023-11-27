@@ -136,20 +136,30 @@ class GPT(nn.Module):
     """GPT Language Model"""
 
     @staticmethod
-    def get_default_config():
+    def get_config(
+        model_type: str = "gpt",
+        n_layer: int = None,
+        n_head: int = None,
+        n_embd: int = None,
+        vocab_size: int = None,
+        block_size: int = None,
+        embd_pdrop: float = 0.1,
+        resid_pdrop: float = 0.1,
+        attn_pdrop: float = 0.1,
+    ) -> CN:
         C = CN()
         # either model_type or (n_layer, n_head, n_embd) must be given in the config
-        C.model_type = "gpt"
-        C.n_layer = None
-        C.n_head = None
-        C.n_embd = None
+        C.model_type = model_type
+        C.n_layer = n_layer
+        C.n_head = n_head
+        C.n_embd = n_embd
         # these options must be filled in externally
-        C.vocab_size = None
-        C.block_size = None
+        C.vocab_size = vocab_size
+        C.block_size = block_size
         # dropout hyperparameters
-        C.embd_pdrop = 0.1
-        C.resid_pdrop = 0.1
-        C.attn_pdrop = 0.1
+        C.embd_pdrop = embd_pdrop
+        C.resid_pdrop = resid_pdrop
+        C.attn_pdrop = attn_pdrop
         return C
 
     def __init__(self, config):
@@ -243,7 +253,7 @@ class GPT(nn.Module):
         from transformers import GPT2LMHeadModel
 
         # create a from-scratch initialized minGPT model
-        config = cls.get_default_config()
+        config = cls.get_config()
         config.model_type = model_type
         config.vocab_size = 50257  # openai's model vocabulary
         config.block_size = 1024  # openai's model block_size

@@ -31,13 +31,11 @@ repos:
         entry: isort
         language: python
         types_or: [python, pyi]
-        args: [--line-length=80]
     -   id: black
         name: black
         entry: black
         language: python
         types_or: [python, pyi]
-        args: [--line-length=80]
     - id: pytest
       name: pytest
       entry: python3 -m pytest -vx -m "not slow"

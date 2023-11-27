@@ -9,14 +9,15 @@ I also tried to add as many comments as possible, my own understanding of what's
 going on.
 """
 
+# isort: off
 import json
 import os
-
-# import regex as re
 import re
 
 import requests
 import torch
+
+# isort: on
 
 # -----------------------------------------------------------------------------
 
