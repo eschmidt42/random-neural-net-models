@@ -8,10 +8,10 @@ import random_neural_net_models.mingpt.model as gpt_model
 import random_neural_net_models.mingpt.trainer as gpt_trainer
 import random_neural_net_models.mingpt.utils as gpt_utils
 
-gpt_utils.set_seed(3407)
-
 
 def test_mingpt_sort():
+    gpt_utils.set_seed(3407)
+
     train_dataset = gpt_data.SortDataset(gpt_data.SET_CHOICE.train)
 
     model_config = gpt_model.GPT.get_config(
