@@ -1,8 +1,36 @@
 # -*- coding: utf-8 -*-
 import pickle
+import typing as T
+from enum import Enum
 
 import torch
 from torch.utils.data import Dataset
+
+SET_CHOICE = Enum("Set choice", "train test")
+
+
+def generate_list_of_random_integers(
+    num_digits: int, length: int
+) -> torch.Tensor:
+    while True:
+        # generate some random integers
+        inp = torch.randint(num_digits, size=(length,), dtype=torch.long)
+        # half of the time let's try to boost the number of examples that
+        # have a large number of repeats, as this is what the model seems to struggle
+        # with later in training, and they are kind of rate
+        if torch.rand(1).item() < 0.5:
+            if inp.unique().nelement() > length // 2:
+                # too many unqiue digits, re-sample
+                continue
+        yield inp
+
+
+def check_split(inp: torch.Tensor) -> SET_CHOICE:
+    # figure out if this generated example is train or test based on its hash
+    h = hash(pickle.dumps(inp.tolist()))
+    return (
+        SET_CHOICE.test if h % 4 == 0 else SET_CHOICE.train
+    )  # designate 25% of examples as test
 
 
 class SortDataset(Dataset):
@@ -15,14 +43,20 @@ class SortDataset(Dataset):
     where I is "ignore", as the transformer is reading the input sequence
     """
 
-    def __init__(self, split, length=6, num_digits=3):
-        assert split in {"train", "test"}
+    def __init__(
+        self,
+        split: SET_CHOICE,
+        length: int = 6,
+        num_digits: int = 3,
+        n_samples: int = 10_000,
+    ):
         self.split = split
         self.length = length
         self.num_digits = num_digits
+        self.n_samples = n_samples
 
     def __len__(self):
-        return 10000  # ...
+        return self.n_samples
 
     def get_vocab_size(self):
         return self.num_digits
@@ -33,25 +67,14 @@ class SortDataset(Dataset):
         # the transformer starts making predictions at the last input element
         return self.length * 2 - 1
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx) -> T.Tuple[torch.Tensor, torch.Tensor]:
         # use rejection sampling to generate an input example from the desired split
-        while True:
-            # generate some random integers
-            inp = torch.randint(
-                self.num_digits, size=(self.length,), dtype=torch.long
-            )
-            # half of the time let's try to boost the number of examples that
-            # have a large number of repeats, as this is what the model seems to struggle
-            # with later in training, and they are kind of rate
-            if torch.rand(1).item() < 0.5:
-                if inp.unique().nelement() > self.length // 2:
-                    # too many unqiue digits, re-sample
-                    continue
-            # figure out if this generated example is train or test based on its hash
-            h = hash(pickle.dumps(inp.tolist()))
-            inp_split = (
-                "test" if h % 4 == 0 else "train"
-            )  # designate 25% of examples as test
+        integer_generator = generate_list_of_random_integers(
+            self.num_digits, self.length
+        )
+        for inp in integer_generator:
+            inp_split = check_split(inp)
+
             if inp_split == self.split:
                 break  # ok
 
