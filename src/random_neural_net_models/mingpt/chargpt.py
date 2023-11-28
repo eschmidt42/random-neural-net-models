@@ -11,7 +11,6 @@ import random_neural_net_models.mingpt.configs as configs
 import random_neural_net_models.utils as utils
 
 logger = utils.get_logger("mingpt.char")
-# -----------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -41,9 +40,6 @@ def get_config(vocab_size: int, block_size: int, max_iters: int) -> CharConfig:
             learning_rate=5e-4,  # the model we're using is so small that we can go a bit faster
         ),
     )
-
-
-# -----------------------------------------------------------------------------
 
 
 class CharDataset(Dataset):

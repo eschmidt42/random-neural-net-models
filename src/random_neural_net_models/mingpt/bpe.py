@@ -19,8 +19,6 @@ import torch
 
 # isort: on
 
-# -----------------------------------------------------------------------------
-
 
 def bytes_to_unicode():
     """
@@ -285,9 +283,6 @@ def get_encoder():
     # construct the Encoder object and return
     enc = Encoder(encoder, bpe_merges)
     return enc
-
-
-# -----------------------------------------------------------------------------
 
 
 class BPETokenizer:

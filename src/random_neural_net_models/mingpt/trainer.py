@@ -5,13 +5,17 @@ so nothing in this file really has anything to do with GPT specifically.
 """
 
 import time
-import typing as T
 from collections import defaultdict
 
 import torch
+from torch.utils.data import Dataset
 from torch.utils.data.dataloader import DataLoader
 
 import random_neural_net_models.mingpt.configs as configs
+import random_neural_net_models.mingpt.model as gpt_model
+import random_neural_net_models.utils as utils
+
+logger = utils.get_logger("mingpt.trainer")
 
 
 class Trainer:
@@ -19,7 +23,12 @@ class Trainer:
     def get_config(**kwargs) -> configs.TrainerConfig:
         return configs.TrainerConfig(**kwargs)
 
-    def __init__(self, config, model, train_dataset):
+    def __init__(
+        self,
+        config: configs.TrainerConfig,
+        model: gpt_model.GPT,
+        train_dataset: Dataset,
+    ):
         self.config = config
         self.model = model
         self.optimizer = None
@@ -32,7 +41,7 @@ class Trainer:
         else:
             self.device = config.device
         self.model = self.model.to(self.device)
-        print("running on device", self.device)
+        logger.info(f"running on device: {self.device}")
 
         # variables that will be assigned to trainer class later for logging and etc
         self.iter_num = 0

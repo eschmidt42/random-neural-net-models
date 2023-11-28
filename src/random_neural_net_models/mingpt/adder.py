@@ -11,8 +11,6 @@ from torch.utils.data import Dataset
 import random_neural_net_models.mingpt.configs as configs
 import random_neural_net_models.mingpt.data as data
 
-# -----------------------------------------------------------------------------
-
 
 @dataclass(frozen=True)
 class DataConfig:
@@ -43,7 +41,6 @@ def get_config(vocab_size: int, block_size: int, max_iters: int) -> AdderConfig:
     )
 
 
-# -----------------------------------------------------------------------------
 def generate_list_of_random_integers(ndigit: int) -> torch.Tensor:
     # split up all addition problems into either training data or test data
     ndigit = ndigit

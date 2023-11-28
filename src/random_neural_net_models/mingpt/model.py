@@ -16,11 +16,9 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 import random_neural_net_models.mingpt.configs as configs
-import random_neural_net_models.mingpt.utils as utils
+import random_neural_net_models.utils as utils
 
-# CN = utils.CfgNode
-
-# -----------------------------------------------------------------------------
+logger = utils.get_logger("mingpt.model")
 
 
 class NewGELU(nn.Module):
