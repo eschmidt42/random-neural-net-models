@@ -67,7 +67,7 @@ class SortDataset(Dataset):
         # the transformer starts making predictions at the last input element
         return self.length * 2 - 1
 
-    def __getitem__(self, idx) -> T.Tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx: int) -> T.Tuple[torch.Tensor, torch.Tensor]:
         # use rejection sampling to generate an input example from the desired split
         integer_generator = generate_list_of_random_integers(
             self.num_digits, self.length

@@ -136,7 +136,7 @@ class AdditionDataset(Dataset):
     def __len__(self):
         return self.ixes.nelement()
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int):
         ndigit = self.config.ndigit  # 2
 
         a, b, c = get_abc(self.ixes[idx].item(), ndigit)  # 1, 1, 2
