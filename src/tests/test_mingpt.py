@@ -14,7 +14,7 @@ import random_neural_net_models.mingpt.utils as gpt_utils
 def test_mingpt_sort():
     gpt_utils.set_seed(3407)
 
-    train_dataset = gpt_sorter.SortDataset(gpt_utils.SET_CHOICE.train)
+    train_dataset = gpt_sorter.SortDataset(gpt_utils.SETS.train)
 
     model_config = gpt_model.GPT.get_config(
         model_type="gpt-nano",
@@ -51,11 +51,9 @@ def test_mingpt_adder():
     data_config = adder.DataConfig(ndigit=2)
     # construct train and test datasets
     train_dataset = adder.AdditionDataset(
-        data_config, split=gpt_utils.SET_CHOICE.train
+        data_config, split=gpt_utils.SETS.train
     )
-    test_dataset = adder.AdditionDataset(
-        data_config, split=gpt_utils.SET_CHOICE.test
-    )
+    test_dataset = adder.AdditionDataset(data_config, split=gpt_utils.SETS.test)
 
     config = adder.get_config(
         vocab_size=train_dataset.get_vocab_size(),

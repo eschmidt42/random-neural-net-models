@@ -27,11 +27,11 @@ def generate_list_of_random_integers(
         yield inp
 
 
-def check_split(inp: torch.Tensor) -> gpt_utils.SET_CHOICE:
+def check_split(inp: torch.Tensor) -> gpt_utils.SETS:
     # figure out if this generated example is train or test based on its hash
     h = hash(pickle.dumps(inp.tolist()))
     return (
-        gpt_utils.SET_CHOICE.test if h % 4 == 0 else gpt_utils.SET_CHOICE.train
+        gpt_utils.SETS.test if h % 4 == 0 else gpt_utils.SETS.train
     )  # designate 25% of examples as test
 
 
@@ -47,7 +47,7 @@ class SortDataset(Dataset):
 
     def __init__(
         self,
-        split: gpt_utils.SET_CHOICE,
+        split: gpt_utils.SETS,
         length: int = 6,
         num_digits: int = 3,
         n_samples: int = 10_000,

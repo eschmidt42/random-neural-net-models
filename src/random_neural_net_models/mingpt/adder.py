@@ -110,7 +110,7 @@ class AdditionDataset(Dataset):
     def get_config(ndigit: int = 2) -> DataConfig:
         return DataConfig(ndigit=ndigit)
 
-    def __init__(self, config: DataConfig, split: utils.SET_CHOICE):
+    def __init__(self, config: DataConfig, split: utils.SETS):
         self.config = config
         self.split = split  # train/test
 
@@ -118,9 +118,7 @@ class AdditionDataset(Dataset):
 
         num_test = min(int(len(perm) * 0.2), 500)
         self.ixes = (
-            perm[:num_test]
-            if split == utils.SET_CHOICE.test
-            else perm[num_test:]
+            perm[:num_test] if split == utils.SETS.test else perm[num_test:]
         )
 
     def get_vocab_size(self):
