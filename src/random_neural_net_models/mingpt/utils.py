@@ -4,9 +4,12 @@ import json
 import os
 import random
 import sys
+from enum import Enum
 
 import numpy as np
 import torch
+
+SET_CHOICE = Enum("Set choice", "train test")
 
 
 def set_seed(seed):

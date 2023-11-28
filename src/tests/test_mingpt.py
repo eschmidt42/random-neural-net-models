@@ -3,8 +3,10 @@ import torch
 
 import random_neural_net_models.mingpt.adder as adder
 import random_neural_net_models.mingpt.chargpt as chargpt
-import random_neural_net_models.mingpt.data as gpt_data
+
+# import random_neural_net_models.mingpt.data as gpt_data
 import random_neural_net_models.mingpt.model as gpt_model
+import random_neural_net_models.mingpt.sorter as gpt_sorter
 import random_neural_net_models.mingpt.trainer as gpt_trainer
 import random_neural_net_models.mingpt.utils as gpt_utils
 
@@ -12,7 +14,7 @@ import random_neural_net_models.mingpt.utils as gpt_utils
 def test_mingpt_sort():
     gpt_utils.set_seed(3407)
 
-    train_dataset = gpt_data.SortDataset(gpt_data.SET_CHOICE.train)
+    train_dataset = gpt_sorter.SortDataset(gpt_utils.SET_CHOICE.train)
 
     model_config = gpt_model.GPT.get_config(
         model_type="gpt-nano",
@@ -49,10 +51,10 @@ def test_mingpt_adder():
     data_config = adder.DataConfig(ndigit=2)
     # construct train and test datasets
     train_dataset = adder.AdditionDataset(
-        data_config, split=gpt_data.SET_CHOICE.train
+        data_config, split=gpt_utils.SET_CHOICE.train
     )
     test_dataset = adder.AdditionDataset(
-        data_config, split=gpt_data.SET_CHOICE.test
+        data_config, split=gpt_utils.SET_CHOICE.test
     )
 
     config = adder.get_config(

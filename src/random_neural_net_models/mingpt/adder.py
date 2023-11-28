@@ -9,7 +9,9 @@ from pydantic.dataclasses import dataclass
 from torch.utils.data import Dataset
 
 import random_neural_net_models.mingpt.configs as configs
-import random_neural_net_models.mingpt.data as data
+
+# import random_neural_net_models.mingpt.data as data
+import random_neural_net_models.mingpt.utils as utils
 
 
 @dataclass(frozen=True)
@@ -108,7 +110,7 @@ class AdditionDataset(Dataset):
     def get_config(ndigit: int = 2) -> DataConfig:
         return DataConfig(ndigit=ndigit)
 
-    def __init__(self, config: DataConfig, split: data.SET_CHOICE):
+    def __init__(self, config: DataConfig, split: utils.SET_CHOICE):
         self.config = config
         self.split = split  # train/test
 
@@ -117,7 +119,7 @@ class AdditionDataset(Dataset):
         num_test = min(int(len(perm) * 0.2), 500)
         self.ixes = (
             perm[:num_test]
-            if split == data.SET_CHOICE.test
+            if split == utils.SET_CHOICE.test
             else perm[num_test:]
         )
 
