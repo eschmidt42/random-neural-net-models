@@ -48,8 +48,12 @@ def test_mingpt_sort():
 def test_mingpt_adder():
     data_config = adder.DataConfig(ndigit=2)
     # construct train and test datasets
-    train_dataset = adder.AdditionDataset(data_config, split="train")
-    test_dataset = adder.AdditionDataset(data_config, split="test")
+    train_dataset = adder.AdditionDataset(
+        data_config, split=gpt_data.SET_CHOICE.train
+    )
+    test_dataset = adder.AdditionDataset(
+        data_config, split=gpt_data.SET_CHOICE.test
+    )
 
     config = adder.get_config(
         vocab_size=train_dataset.get_vocab_size(),

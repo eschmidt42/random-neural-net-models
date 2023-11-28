@@ -2,12 +2,14 @@
 """
 Trains a GPT to add n-digit numbers.
 """
+import typing as T
 
 import torch
 from pydantic.dataclasses import dataclass
 from torch.utils.data import Dataset
 
 import random_neural_net_models.mingpt.configs as configs
+import random_neural_net_models.mingpt.data as data
 
 # -----------------------------------------------------------------------------
 
@@ -42,6 +44,42 @@ def get_config(vocab_size: int, block_size: int, max_iters: int) -> AdderConfig:
 
 
 # -----------------------------------------------------------------------------
+def generate_list_of_random_integers(ndigit: int) -> torch.Tensor:
+    # split up all addition problems into either training data or test data
+    ndigit = ndigit
+    assert (
+        ndigit <= 3
+    ), "the lines below would be very memory inefficient, in future maybe refactor to support"
+    num = (
+        10**ndigit
+    ) ** 2  # total number of possible addition problems with ndigit numbers
+    rng = torch.Generator()
+    rng.manual_seed(1337)
+    perm = torch.randperm(num, generator=rng)
+    return perm
+
+
+def get_abc(idx: int, ndigit: int) -> T.Tuple[int, int, int]:
+    nd = 10**ndigit
+    a = idx // nd
+    b = idx % nd
+    # calculate the "label" of the addition problem a + b
+    c = a + b
+    return a, b, c
+
+
+def int2str(x: int, ndigit: int) -> str:
+    return f"{x:0{ndigit}d}"
+
+
+def encode_addition_problem(a: int, b: int, c: int, ndigit: int) -> T.List[int]:
+    # if a = 1, b = 1, c = 2, ndigit = 2
+    astr = int2str(a, ndigit)  # "01"
+    bstr = int2str(b, ndigit)  # "01"
+    cstr = int2str(c, ndigit + 1)[::-1]  # "200"
+    render = astr + bstr + cstr  # "0101200"
+    dix = [int(s) for s in render]  # convert each character to its token index
+    return dix
 
 
 class AdditionDataset(Dataset):
@@ -73,25 +111,18 @@ class AdditionDataset(Dataset):
     def get_config(ndigit: int = 2) -> DataConfig:
         return DataConfig(ndigit=ndigit)
 
-    def __init__(self, config: DataConfig, split):
+    def __init__(self, config: DataConfig, split: data.SET_CHOICE):
         self.config = config
         self.split = split  # train/test
 
-        # split up all addition problems into either training data or test data
-        ndigit = self.config.ndigit
-        assert (
-            ndigit <= 3
-        ), "the lines below would be very memory inefficient, in future maybe refactor to support"
-        num = (
-            10**ndigit
-        ) ** 2  # total number of possible addition problems with ndigit numbers
-        rng = torch.Generator()
-        rng.manual_seed(1337)
-        perm = torch.randperm(num, generator=rng)
-        num_test = min(
-            int(num * 0.2), 500
-        )  # 20% of the whole dataset, or only up to 500
-        self.ixes = perm[:num_test] if split == "test" else perm[num_test:]
+        perm = generate_list_of_random_integers(config.ndigit)
+
+        num_test = min(int(len(perm) * 0.2), 500)
+        self.ixes = (
+            perm[:num_test]
+            if split == data.SET_CHOICE.test
+            else perm[num_test:]
+        )
 
     def get_vocab_size(self):
         return 10  # digits 0..9
@@ -106,30 +137,20 @@ class AdditionDataset(Dataset):
         return self.ixes.nelement()
 
     def __getitem__(self, idx):
-        ndigit = self.config.ndigit
-        # given a problem index idx, first recover the associated a + b
-        idx = self.ixes[idx].item()
-        nd = 10**ndigit
-        a = idx // nd
-        b = idx % nd
-        # calculate the "label" of the addition problem a + b
-        c = a + b
-        # encode the digits of a, b, c into strings
-        astr = f"%0{ndigit}d" % a
-        bstr = f"%0{ndigit}d" % b
-        cstr = (f"%0{ndigit+1}d" % c)[::-1]  # reverse c to make addition easier
-        render = astr + bstr + cstr
-        dix = [
-            int(s) for s in render
-        ]  # convert each character to its token index
+        ndigit = self.config.ndigit  # 2
+
+        a, b, c = get_abc(self.ixes[idx].item(), ndigit)  # 1, 1, 2
+
+        dix = encode_addition_problem(a, b, c, ndigit)  # [0,1,0,1,2,0,0]
+
         # x will be input to GPT and y will be the associated expected outputs
-        x = torch.tensor(dix[:-1], dtype=torch.long)
-        y = torch.tensor(
-            dix[1:], dtype=torch.long
-        )  # predict the next token in the sequence
-        y[
-            : ndigit * 2 - 1
-        ] = (
-            -1
-        )  # we will only train in the output locations. -1 will mask loss to zero
+        x = torch.tensor(dix[:-1], dtype=torch.long)  # [0,1,0,1,2,0]
+
+        # predict the next token in the sequence
+        y = torch.tensor(dix[1:], dtype=torch.long)  # [1,0,1,2,0,0]
+
+        # we will only train in the output locations. -1 will mask loss to zero
+        mask = ndigit * 2 - 1
+        y[:mask] = -1  # [-1,-1,-1,2,0,0]
+
         return x, y
