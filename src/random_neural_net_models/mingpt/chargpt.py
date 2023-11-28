@@ -8,7 +8,9 @@ from pydantic.dataclasses import dataclass
 from torch.utils.data import Dataset
 
 import random_neural_net_models.mingpt.configs as configs
+import random_neural_net_models.utils as utils
 
+logger = utils.get_logger("mingpt.char")
 # -----------------------------------------------------------------------------
 
 
@@ -53,12 +55,14 @@ class CharDataset(Dataset):
     def get_config() -> DataConfig:
         return DataConfig(block_size=128)
 
-    def __init__(self, config, data):
+    def __init__(self, config: DataConfig, data: str):
         self.config = config
 
         chars = sorted(list(set(data)))
         data_size, vocab_size = len(data), len(chars)
-        print("data has %d characters, %d unique." % (data_size, vocab_size))
+        logger.info(
+            f"data has {data_size:_d} characters, {vocab_size:_d} unique."
+        )
 
         self.stoi = {ch: i for i, ch in enumerate(chars)}
         self.itos = {i: ch for i, ch in enumerate(chars)}
@@ -74,7 +78,7 @@ class CharDataset(Dataset):
     def __len__(self):
         return len(self.data) - self.config.block_size
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int):
         # grab a chunk of (block_size + 1) characters from the data
         chunk = self.data[idx : idx + self.config.block_size + 1]
         # encode every character to an integer
