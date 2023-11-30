@@ -81,7 +81,7 @@ def test_mingpt_adder():
     assert torch.allclose(pred[0, -3:], y[-3:])
 
 
-def test_mingpt_chargpt():
+def test_mingpt_char():
     data_config = char.DataConfig(block_size=128)
 
     # construct the training dataset
