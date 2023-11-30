@@ -2,7 +2,7 @@
 import torch
 
 import random_neural_net_models.mingpt.adder as adder
-import random_neural_net_models.mingpt.chargpt as chargpt
+import random_neural_net_models.mingpt.char as char
 
 # import random_neural_net_models.mingpt.data as gpt_data
 import random_neural_net_models.mingpt.model as gpt_model
@@ -84,14 +84,14 @@ def test_mingpt_adder():
 
 
 def test_mingpt_chargpt():
-    data_config = chargpt.DataConfig(block_size=128)
+    data_config = char.DataConfig(block_size=128)
 
     # construct the training dataset
     text = open("data/tiny-shakespear.txt", "r").read()
-    train_dataset = chargpt.CharDataset(data_config, text)
+    train_dataset = char.CharDataset(data_config, text)
 
     # get default config and overrides from the command line, if any
-    config = chargpt.get_config(
+    config = char.get_config(
         max_iters=10,
         vocab_size=train_dataset.get_vocab_size(),
         block_size=train_dataset.get_block_size(),
