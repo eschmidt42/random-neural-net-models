@@ -10,6 +10,7 @@ https://github.com/huggingface/transformers/blob/main/src/transformers/models/gp
 """
 
 import math
+import typing as T
 
 import torch
 import torch.nn as nn
@@ -61,7 +62,7 @@ class CausalSelfAttention(nn.Module):
         self.n_head = config.n_head
         self.n_embd = config.n_embd
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         (
             B,
             T,
@@ -118,7 +119,7 @@ class Block(nn.Module):
             m.c_proj(m.act(m.c_fc(x)))
         )  # MLP forward
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x + self.attn(self.ln_1(x))
         x = x + self.mlpf(self.ln_2(x))
         return x
@@ -192,9 +193,9 @@ class GPT(nn.Module):
 
         # report number of parameters (note we don't count the decoder parameters in lm_head)
         n_params = sum(p.numel() for p in self.transformer.parameters())
-        print("number of parameters: %.2fM" % (n_params / 1e6,))
+        logger.info("number of parameters: %.2fM" % (n_params / 1e6,))
 
-    def _init_weights(self, module):
+    def _init_weights(self, module: nn.Module):
         if isinstance(module, nn.Linear):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
             if module.bias is not None:
@@ -206,7 +207,7 @@ class GPT(nn.Module):
             torch.nn.init.ones_(module.weight)
 
     @classmethod
-    def from_pretrained(cls, model_type):
+    def from_pretrained(cls, model_type: str) -> nn.Module:
         """
         Initialize a pretrained GPT model by copying over the weights
         from a huggingface/transformers checkpoint.
@@ -252,7 +253,9 @@ class GPT(nn.Module):
 
         return model
 
-    def configure_optimizers(self, train_config):
+    def configure_optimizers(
+        self, train_config: configs.TrainerConfig
+    ) -> torch.optim.Optimizer:
         """
         This long function is unfortunately doing something very simple and is being very defensive:
         We are separating out all parameters of the model into two buckets: those that will experience
@@ -317,7 +320,9 @@ class GPT(nn.Module):
         )
         return optimizer
 
-    def forward(self, idx, targets=None):
+    def forward(
+        self, idx: torch.Tensor, targets: torch.Tensor = None
+    ) -> T.Tuple[torch.Tensor, torch.Tensor]:
         device = idx.device
         b, t = idx.size()
         assert (
@@ -353,7 +358,12 @@ class GPT(nn.Module):
 
     @torch.no_grad()
     def generate(
-        self, idx, max_new_tokens, temperature=1.0, do_sample=False, top_k=None
+        self,
+        idx: torch.Tensor,
+        max_new_tokens: int,
+        temperature: float = 1.0,
+        do_sample: bool = False,
+        top_k=None,
     ) -> torch.Tensor:
         """
         Take a conditioning sequence of indices idx (LongTensor of shape (b,t)) and complete
