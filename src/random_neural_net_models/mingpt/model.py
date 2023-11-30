@@ -27,18 +27,11 @@ class NewGELU(nn.Module):
     Reference: Gaussian Error Linear Units (GELU) paper: https://arxiv.org/abs/1606.08415
     """
 
-    def forward(self, x):
-        return (
-            0.5
-            * x
-            * (
-                1.0
-                + torch.tanh(
-                    math.sqrt(2.0 / math.pi)
-                    * (x + 0.044715 * torch.pow(x, 3.0))
-                )
-            )
-        )
+    C = math.sqrt(2.0 / math.pi)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        a = x + 0.044715 * torch.pow(x, 3.0)
+        return 0.5 * x * (1 + torch.tanh(self.C * a))
 
 
 class CausalSelfAttention(nn.Module):
@@ -48,7 +41,7 @@ class CausalSelfAttention(nn.Module):
     explicit implementation here to show that there is nothing too scary here.
     """
 
-    def __init__(self, config):
+    def __init__(self, config: configs.ModelConfig):
         super().__init__()
         assert config.n_embd % config.n_head == 0
         # key, query, value projections for all heads, but in a batch
@@ -107,7 +100,7 @@ class CausalSelfAttention(nn.Module):
 class Block(nn.Module):
     """an unassuming Transformer block"""
 
-    def __init__(self, config):
+    def __init__(self, config: configs.ModelConfig):
         super().__init__()
         self.ln_1 = nn.LayerNorm(config.n_embd)
         self.attn = CausalSelfAttention(config)
