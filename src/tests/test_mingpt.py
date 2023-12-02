@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+from pathlib import Path
+
+import pytest
 import torch
 
 import random_neural_net_models.mingpt.adder as adder
@@ -81,6 +84,10 @@ def test_mingpt_adder():
     assert torch.allclose(pred[0, -3:], y[-3:])
 
 
+@pytest.mark.skipif(
+    not Path("data/tiny-shakespear.txt").exists(),
+    reason="data/tiny-shakespear.txt not found",
+)
 def test_mingpt_char():
     data_config = char.DataConfig(block_size=128)
 
