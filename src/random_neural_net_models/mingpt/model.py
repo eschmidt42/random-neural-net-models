@@ -14,7 +14,7 @@ import typing as T
 
 import torch
 import torch.nn as nn
-from einops import rearrange
+from einops import einsum, rearrange
 from einops.layers.torch import Rearrange
 from torch.nn import functional as F
 
@@ -91,7 +91,7 @@ class CausalSelfAttention(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # batch size, sequence length, embedding dimensionality (n_embd)
-        B, S, C = x.size()
+        _, S, C = x.size()
 
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
         q, k, v = self.c_attn(x).split(self.n_embd, dim=2)
@@ -99,15 +99,22 @@ class CausalSelfAttention(nn.Module):
         q = self._move_head_forward(q, C)
         v = self._move_head_forward(v, C)
 
-        # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
-        att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
-        att = att.masked_fill(self.bias[:, :, :S, :S] == 0, float("-inf"))
+        # causal self-attention; Self-attend: (B, nh, S, hs) x (B, nh, hs, S) -> (B, nh, S, S)
+        f = 1.0 / math.sqrt(k.size(-1))
+        kT = rearrange(k, "B Nh S Ne -> B Nh Ne S")
+        att = f * einsum(
+            q, kT, "B Nh Sq Ne, B Nh Ne Sk -> B Nh Sq Sk"
+        )  # q @ kT * f
+
+        mask = self.bias[:, :, :S, :S] == 0
+        att = att.masked_fill(mask, float("-inf"))  # causal part
+
         att = F.softmax(att, dim=-1)
+
         att = self.attn_dropout(att)
-        y = att @ v  # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
-        y = (
-            y.transpose(1, 2).contiguous().view(B, S, C)
-        )  # re-assemble all head outputs side by side
+
+        y = einsum(att, v, "B Nh S Sv, B Nh Sv Ne -> B Nh S Ne")  # self part
+        y = rearrange(y, "B Nh S Ne -> B S (Nh Ne)")
 
         # output projection
         y = self.resid_dropout(self.c_proj(y))
