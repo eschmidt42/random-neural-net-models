@@ -75,6 +75,11 @@ class Trainer:
             num_workers=self.config.num_workers,
         )
 
+        if self.config.max_iters is None:
+            logger.warning(
+                "max_iters is None, you probably want to set something to prevent an infinite training loop"
+            )
+
         self.do_train(train_loader)
 
     def _get_batch(
