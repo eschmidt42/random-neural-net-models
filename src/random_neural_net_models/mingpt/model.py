@@ -144,6 +144,30 @@ class Block(nn.Module):
         return x
 
 
+class Transformer(nn.Module):
+    def __init__(self, config: configs.ModelConfig):
+        super().__init__()
+        self.wte = nn.Embedding(config.vocab_size, config.n_embd)
+        self.wpe = nn.Embedding(config.block_size, config.n_embd)
+        self.drop = nn.Dropout(config.embd_pdrop)
+        self.blocks = nn.ModuleList(
+            [Block(config) for _ in range(config.n_layer)]
+        )
+        self.ln_f = nn.LayerNorm(config.n_embd)
+
+        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
+
+    def forward(self, idx: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
+        tok_emb = self.wte(idx)  # token embeddings of shape (b, t, n_embd)
+        pos_emb = self.wpe(pos)  # position embeddings of shape (1, t, n_embd)
+        x = self.drop(tok_emb + pos_emb)
+        for block in self.blocks:
+            x = block(x)
+        x = self.ln_f(x)
+        logits = self.lm_head(x)
+        return logits
+
+
 MODEL_CONFIGS = {
     # names follow the huggingface naming conventions
     # GPT-1
@@ -191,16 +215,7 @@ class GPT(nn.Module):
                 config, **MODEL_CONFIGS[config.model_type]
             )
 
-        self.transformer = nn.ModuleDict(
-            dict(
-                wte=nn.Embedding(config.vocab_size, config.n_embd),
-                wpe=nn.Embedding(config.block_size, config.n_embd),
-                drop=nn.Dropout(config.embd_pdrop),
-                h=nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
-                ln_f=nn.LayerNorm(config.n_embd),
-            )
-        )
-        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
+        self.transformer = Transformer(config)
 
         # init all weights, and apply a special scaled init to the residual projections, per GPT-2 paper
         self.apply(self._init_weights)
@@ -351,18 +366,7 @@ class GPT(nn.Module):
             0
         )  # shape (1, t)
 
-        # forward the GPT model itself
-        tok_emb = self.transformer.wte(
-            idx
-        )  # token embeddings of shape (b, t, n_embd)
-        pos_emb = self.transformer.wpe(
-            pos
-        )  # position embeddings of shape (1, t, n_embd)
-        x = self.transformer.drop(tok_emb + pos_emb)
-        for block in self.transformer.h:
-            x = block(x)
-        x = self.transformer.ln_f(x)
-        logits = self.lm_head(x)
+        logits = self.transformer(idx, pos)
 
         # if we are given some desired targets also calculate the loss
         loss = None
