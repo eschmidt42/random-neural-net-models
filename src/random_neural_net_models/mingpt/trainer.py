@@ -5,6 +5,7 @@ so nothing in this file really has anything to do with GPT specifically.
 """
 
 import time
+import typing as T
 from collections import defaultdict
 
 import torch
@@ -48,10 +49,10 @@ class Trainer:
         self.iter_time = 0.0
         self.iter_dt = 0.0
 
-    def add_callback(self, onevent: str, callback):
+    def add_callback(self, onevent: str, callback: T.Callable):
         self.callbacks[onevent].append(callback)
 
-    def set_callback(self, onevent: str, callback):
+    def set_callback(self, onevent: str, callback: T.Callable):
         self.callbacks[onevent] = [callback]
 
     def trigger_callbacks(self, onevent: str):
@@ -59,10 +60,8 @@ class Trainer:
             callback(self)
 
     def run(self):
-        model, config = self.model, self.config
-
         # setup the optimizer
-        self.optimizer = model.configure_optimizers(config)
+        self.optimizer = self.model.configure_optimizers(self.config)
 
         # setup the dataloader
         train_loader = DataLoader(
@@ -72,35 +71,45 @@ class Trainer:
             ),
             shuffle=False,
             pin_memory=True,
-            batch_size=config.batch_size,
-            num_workers=config.num_workers,
+            batch_size=self.config.batch_size,
+            num_workers=self.config.num_workers,
         )
 
-        model.train()
+        self.do_train(train_loader)
+
+    def _get_batch(
+        self, train_loader: DataLoader
+    ) -> T.Tuple[torch.Tensor, torch.Tensor]:
+        # fetch the next batch (x, y) and re-init iterator if needed
+        try:
+            batch = next(self.data_iter)
+        except StopIteration:
+            self.data_iter = iter(train_loader)
+            batch = next(self.data_iter)
+        batch = [t.to(self.device) for t in batch]
+        x, y = batch
+        return x, y
+
+    def do_train(self, train_loader: DataLoader):
+        self.model.train()
         self.iter_num = 0
         self.iter_time = time.time()
-        data_iter = iter(train_loader)
+        self.data_iter = iter(train_loader)
         while True:
-            # fetch the next batch (x, y) and re-init iterator if needed
-            try:
-                batch = next(data_iter)
-            except StopIteration:
-                data_iter = iter(train_loader)
-                batch = next(data_iter)
-            batch = [t.to(self.device) for t in batch]
-            x, y = batch
+            x, y = self._get_batch(train_loader)
 
             # forward the model
-            logits, self.loss = model(x, y)
+            _, self.loss = self.model(x, y)
 
             # backprop and update the parameters
-            model.zero_grad(set_to_none=True)
+            self.model.zero_grad(set_to_none=True)
             self.loss.backward()
             torch.nn.utils.clip_grad_norm_(
-                model.parameters(), config.grad_norm_clip
+                self.model.parameters(), self.config.grad_norm_clip
             )
             self.optimizer.step()
 
+            # some bookkeeping
             self.trigger_callbacks("on_batch_end")
             self.iter_num += 1
             tnow = time.time()
@@ -109,7 +118,7 @@ class Trainer:
 
             # termination conditions
             if (
-                config.max_iters is not None
-                and self.iter_num >= config.max_iters
+                self.config.max_iters is not None
+                and self.iter_num >= self.config.max_iters
             ):
                 break
