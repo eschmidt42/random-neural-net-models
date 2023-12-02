@@ -126,25 +126,21 @@ class Block(nn.Module):
 
     def __init__(self, config: configs.ModelConfig):
         super().__init__()
-        self.ln_1 = nn.LayerNorm(config.n_embd)
-        self.attn = CausalSelfAttention(config)
-        self.ln_2 = nn.LayerNorm(config.n_embd)
-        self.mlp = nn.ModuleDict(
-            dict(
-                c_fc=nn.Linear(config.n_embd, 4 * config.n_embd),
-                c_proj=nn.Linear(4 * config.n_embd, config.n_embd),
-                act=NewGELU(),
-                dropout=nn.Dropout(config.resid_pdrop),
-            )
+        self.attn = nn.Sequential(
+            nn.LayerNorm(config.n_embd),
+            CausalSelfAttention(config),
         )
-        m = self.mlp
-        self.mlpf = lambda x: m.dropout(
-            m.c_proj(m.act(m.c_fc(x)))
-        )  # MLP forward
+        self.mlpf = nn.Sequential(
+            nn.LayerNorm(config.n_embd),
+            nn.Linear(config.n_embd, 4 * config.n_embd),
+            NewGELU(),
+            nn.Linear(4 * config.n_embd, config.n_embd),
+            nn.Dropout(config.resid_pdrop),
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = x + self.attn(self.ln_1(x))
-        x = x + self.mlpf(self.ln_2(x))
+        x = x + self.attn(x)
+        x = x + self.mlpf(x)
         return x
 
 
