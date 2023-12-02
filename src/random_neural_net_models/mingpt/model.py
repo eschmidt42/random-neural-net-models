@@ -320,10 +320,13 @@ class GPT(nn.Module):
         self, idx: torch.Tensor, targets: torch.Tensor = None
     ) -> T.Tuple[torch.Tensor, torch.Tensor]:
         device = idx.device
-        b, t = idx.size()
+
+        _, t = idx.size()
+
         assert (
             t <= self.block_size
         ), f"Cannot forward sequence of length {t}, block size is only {self.block_size}"
+
         pos = torch.arange(0, t, dtype=torch.long, device=device).unsqueeze(
             0
         )  # shape (1, t)
