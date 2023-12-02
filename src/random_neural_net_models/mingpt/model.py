@@ -160,12 +160,12 @@ class Transformer(nn.Module):
     def forward(self, idx: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
         tok_emb = self.wte(idx)  # token embeddings of shape (b, t, n_embd)
         pos_emb = self.wpe(pos)  # position embeddings of shape (1, t, n_embd)
-        x = self.drop(tok_emb + pos_emb)
+        x = self.drop(tok_emb + pos_emb)  # (b, t, n_embd)
         for block in self.blocks:
             x = block(x)
-        x = self.ln_f(x)
-        logits = self.lm_head(x)
-        return logits
+        x = self.ln_f(x)  # (b, t, n_embd)
+        logits = self.lm_head(x)  # (b, t, vocab_size)
+        return logits  # (b, t, vocab_size)
 
 
 MODEL_CONFIGS = {
@@ -187,6 +187,18 @@ MODEL_CONFIGS = {
 }
 
 
+def init_weights_given_module_type(module: nn.Module):
+    if isinstance(module, nn.Linear):
+        torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+        if module.bias is not None:
+            torch.nn.init.zeros_(module.bias)
+    elif isinstance(module, nn.Embedding):
+        torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+    elif isinstance(module, nn.LayerNorm):
+        torch.nn.init.zeros_(module.bias)
+        torch.nn.init.ones_(module.weight)
+
+
 class GPT(nn.Module):
     """GPT Language Model"""
 
@@ -194,11 +206,9 @@ class GPT(nn.Module):
     def get_config(**kwargs) -> configs.ModelConfig:
         return configs.ModelConfig(**kwargs)
 
-    def __init__(self, config: configs.ModelConfig):
-        super().__init__()
+    def handle_config(self, config: configs.ModelConfig) -> configs.ModelConfig:
         assert config.vocab_size is not None
         assert config.block_size is not None
-        self.block_size = config.block_size
 
         type_given = config.model_type is not None
         params_given = all(
@@ -214,31 +224,30 @@ class GPT(nn.Module):
             config = configs.get_modified_model_config(
                 config, **MODEL_CONFIGS[config.model_type]
             )
+        return config
 
+    def __init__(self, config: configs.ModelConfig):
+        super().__init__()
+
+        config = self.handle_config(config)
+
+        self.block_size = config.block_size
         self.transformer = Transformer(config)
 
-        # init all weights, and apply a special scaled init to the residual projections, per GPT-2 paper
-        self.apply(self._init_weights)
-        for pn, p in self.named_parameters():
-            if pn.endswith("c_proj.weight"):
-                torch.nn.init.normal_(
-                    p, mean=0.0, std=0.02 / math.sqrt(2 * config.n_layer)
-                )
+        self._init_weights(config.n_layer)
 
         # report number of parameters (note we don't count the decoder parameters in lm_head)
         n_params = sum(p.numel() for p in self.transformer.parameters())
-        logger.info("number of parameters: %.2fM" % (n_params / 1e6,))
+        logger.info(f"number of parameters: {n_params / 1e6:.2f} M")
 
-    def _init_weights(self, module: nn.Module):
-        if isinstance(module, nn.Linear):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            if module.bias is not None:
-                torch.nn.init.zeros_(module.bias)
-        elif isinstance(module, nn.Embedding):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-        elif isinstance(module, nn.LayerNorm):
-            torch.nn.init.zeros_(module.bias)
-            torch.nn.init.ones_(module.weight)
+    def _init_weights(self, n_layer: int):
+        # init all weights, and apply a special scaled init to the residual projections, per GPT-2 paper
+        self.apply(init_weights_given_module_type)
+        for pn, p in self.named_parameters():
+            if pn.endswith("c_proj.weight"):
+                torch.nn.init.normal_(
+                    p, mean=0.0, std=0.02 / math.sqrt(2 * n_layer)
+                )
 
     def configure_optimizers(
         self, train_config: configs.TrainerConfig
@@ -353,21 +362,27 @@ class GPT(nn.Module):
                 if idx.size(1) <= self.block_size
                 else idx[:, -self.block_size :]
             )
+
             # forward the model to get the logits for the index in the sequence
             logits, _ = self(idx_cond)
+
             # pluck the logits at the final step and scale by desired temperature
             logits = logits[:, -1, :] / temperature
+
             # optionally crop the logits to only the top k options
             if top_k is not None:
                 v, _ = torch.topk(logits, top_k)
                 logits[logits < v[:, [-1]]] = -float("Inf")
+
             # apply softmax to convert logits to (normalized) probabilities
             probs = F.softmax(logits, dim=-1)
+
             # either sample from the distribution or take the most likely element
             if do_sample:
                 idx_next = torch.multinomial(probs, num_samples=1)
             else:
                 _, idx_next = torch.topk(probs, k=1, dim=-1)
+
             # append sampled index to the running sequence and continue
             idx = torch.cat((idx, idx_next), dim=1)
 
