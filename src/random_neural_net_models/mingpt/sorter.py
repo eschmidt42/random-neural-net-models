@@ -12,11 +12,13 @@ logger = utils.get_logger("mingpt.sorter")
 
 
 def generate_list_of_random_integers(
-    num_digits: int, length: int
+    num_digits: int, length: int, rng: torch.Generator
 ) -> torch.Tensor:
     while True:
         # generate some random integers
-        inp = torch.randint(num_digits, size=(length,), dtype=torch.long)
+        inp = torch.randint(
+            num_digits, size=(length,), dtype=torch.long, generator=rng
+        )
         # half of the time let's try to boost the number of examples that
         # have a large number of repeats, as this is what the model seems to struggle
         # with later in training, and they are kind of rate
@@ -51,11 +53,13 @@ class SortDataset(Dataset):
         length: int = 6,
         num_digits: int = 3,
         n_samples: int = 10_000,
+        seed: int = 3407,
     ):
         self.split = split
         self.length = length
         self.num_digits = num_digits
         self.n_samples = n_samples
+        self.rng = torch.manual_seed(seed)
 
     def __len__(self):
         return self.n_samples
@@ -72,7 +76,7 @@ class SortDataset(Dataset):
     def __getitem__(self, idx: int) -> T.Tuple[torch.Tensor, torch.Tensor]:
         # use rejection sampling to generate an input example from the desired split
         integer_generator = generate_list_of_random_integers(
-            self.num_digits, self.length
+            self.num_digits, self.length, self.rng
         )
         for inp in integer_generator:
             inp_split = check_split(inp)

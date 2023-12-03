@@ -15,7 +15,7 @@ import random_neural_net_models.mingpt.utils as gpt_utils
 def test_mingpt_sort():
     gpt_utils.set_seed(3407)
 
-    train_dataset = sorter.SortDataset(gpt_utils.SETS.train)
+    train_dataset = sorter.SortDataset(gpt_utils.SETS.train, seed=3407)
 
     model_config = gpt_model.GPT.get_config(
         model_type="gpt-nano",

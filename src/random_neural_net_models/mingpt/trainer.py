@@ -9,7 +9,7 @@ import typing as T
 from collections import defaultdict
 
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, RandomSampler
 from torch.utils.data.dataloader import DataLoader
 
 import random_neural_net_models.mingpt.configs as configs
@@ -66,8 +66,11 @@ class Trainer:
         # setup the dataloader
         train_loader = DataLoader(
             self.train_dataset,
-            sampler=torch.utils.data.RandomSampler(
-                self.train_dataset, replacement=True, num_samples=int(1e10)
+            sampler=RandomSampler(
+                self.train_dataset,
+                replacement=True,
+                num_samples=int(1e10),
+                generator=torch.manual_seed(3407),
             ),
             shuffle=False,
             pin_memory=True,
