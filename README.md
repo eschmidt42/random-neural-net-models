@@ -34,3 +34,7 @@ See jupyter notebooks in [`nbs/`](https://github.com/eschmidt42/random-neural-ne
 * resnet: `resnet_fastai2022.ipynb`
 * unet: `unet_fastai2022.ipynb`
 * diffusion (unet + noise): `diffusion_fastai2022.ipynb`
+* [mingpt](https://github.com/karpathy/minGPT):
+    * `mingpt_sort.ipynb`
+    * `mingpt_char.ipynb`
+    * `mingpt_adder.ipynb`
