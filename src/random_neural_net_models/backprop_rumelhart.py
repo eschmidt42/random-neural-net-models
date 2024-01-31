@@ -159,7 +159,7 @@ class RumelhartBlock(nn.Module):
         return self.block(x)
 
 
-# TODO: implement using wandb logging
+# TODO: implement wandb logging
 class Rumelhart1986PytorchPerceptron(nn.Module):
     def __init__(
         self,

@@ -23,20 +23,26 @@ class Callback:
     ...
 
 
+class CancelFitException(Exception):
+    ...
+
+
 class Events(Enum):
     after_loss = "after_loss"
-    on_train_begin = "on_train_begin"
-    on_train_end = "on_train_end"
-    on_batch_end = "on_batch_end"
+    before_train = "before_train"
+    after_train = "after_train"
+    before_batch = "before_batch"
+    after_batch = "after_batch"
+
+
+# TODO: add hyperparam scheduler https://pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate
+# TODO: add logging of activations, weights, gradient and losses using wandb
 
 
 class Learner:
     model: nn.Module
     optimizer: Optimizer
     loss_func: torch_loss._Loss
-
-    # TODO: add hyperparam scheduler https://pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate
-    # TODO: add logging of activations, weights, gradient and losses using wandb
 
     def __init__(
         self,
@@ -61,26 +67,48 @@ class Learner:
         for callback in relevant_callbacks:
             getattr(callback, event.value)(self)
 
+    def do_batch_train(self, tensordict: TensorDict):
+        self.callback(Events.before_batch)
+        self.optimizer.zero_grad()
+        inference = self.model(tensordict)
+        self.loss = self.loss_func(inference, tensordict)
+        self.callback(Events.after_loss)
+        self.loss.backward()
+        self.optimizer.step()
+        self.callback(Events.after_batch)
+        self.iteration += 1
+
+    def do_epoch(self, dataloader: DataLoader):
+        for self.batch, tensordict in tqdm.tqdm(
+            enumerate(dataloader), total=len(dataloader), desc="batch"
+        ):
+            self.do_batch_train(tensordict)
+
     def fit(self, dataloader: DataLoader, n_epochs: int):
         # TODO: add validation loop
         self.model.train()
-        self.callback(Events.on_train_begin)
+        self.callback(Events.before_train)
         for self.epoch in tqdm.tqdm(
             range(n_epochs), total=n_epochs, desc="epoch"
         ):
-            for self.batch, tensordict in tqdm.tqdm(
-                enumerate(dataloader), total=len(dataloader), desc="batch"
-            ):
-                self.optimizer.zero_grad()
-                inference = self.model(tensordict)
-                self.loss = self.loss_func(inference, tensordict)
-                self.callback(Events.after_loss)
-                self.loss.backward()
-                self.optimizer.step()
-                self.iteration += 1
-                self.callback(Events.on_batch_end)
+            try:
+                self.do_epoch(dataloader)
+            except CancelFitException:
+                break
+            # for self.batch, tensordict in tqdm.tqdm(
+            #     enumerate(dataloader), total=len(dataloader), desc="batch"
+            # ):
+            #     self.callback(Events.before_batch)
+            #     self.optimizer.zero_grad()
+            #     inference = self.model(tensordict)
+            #     self.loss = self.loss_func(inference, tensordict)
+            #     self.callback(Events.after_loss)
+            #     self.loss.backward()
+            #     self.optimizer.step()
+            #     self.callback(Events.after_batch)
+            #     self.iteration += 1
 
-        self.callback(Events.on_train_end)
+        self.callback(Events.after_train)
 
     @torch.no_grad()
     def predict(self, dataloader: DataLoader) -> torch.Tensor:
@@ -118,7 +146,7 @@ class TrainLossCallback(Callback):
             )
         )
 
-    def get_losses(self) -> np.ndarray:
+    def get_losses(self) -> pd.DataFrame:
         return pd.DataFrame([asdict(l) for l in self.losses])
 
 
@@ -138,7 +166,7 @@ class TrainActivationsCallback(Callback):
         self.name_patterns = name_patterns
         self.max_depth_search = max_depth_search
 
-    def on_train_begin(self, learner: Learner):
+    def before_train(self, learner: Learner):
         self.activations_history = rnnm_telemetry.ActivationsHistory(
             learner.model,
             every_n=self.every_n,
@@ -146,7 +174,7 @@ class TrainActivationsCallback(Callback):
             max_depth_search=self.max_depth_search,
         )
 
-    def on_train_end(self, learner: Learner):
+    def after_train(self, learner: Learner):
         self.activations_history.clean()
 
     def get_stats(self) -> pd.DataFrame:
@@ -175,7 +203,7 @@ class TrainGradientsCallback(Callback):
         self.name_patterns = name_patterns
         self.max_depth_search = max_depth_search
 
-    def on_train_begin(self, learner: Learner):
+    def before_train(self, learner: Learner):
         self.gradients_history = rnnm_telemetry.GradientsHistory(
             learner.model,
             every_n=self.every_n,
@@ -183,7 +211,7 @@ class TrainGradientsCallback(Callback):
             max_depth_search=self.max_depth_search,
         )
 
-    def on_train_end(self, learner: Learner):
+    def after_train(self, learner: Learner):
         self.gradients_history.clean()
 
     def get_stats(self) -> pd.DataFrame:
@@ -212,7 +240,7 @@ class TrainParametersCallback(Callback):
         self.name_patterns = name_patterns
         self.max_depth_search = max_depth_search
 
-    def on_train_begin(self, learner: Learner):
+    def before_train(self, learner: Learner):
         self.parameters_history = rnnm_telemetry.ParametersHistory(
             learner.model,
             every_n=self.every_n,
@@ -220,7 +248,7 @@ class TrainParametersCallback(Callback):
             max_depth_search=self.max_depth_search,
         )
 
-    def on_batch_end(self, learner: Learner):
+    def after_batch(self, learner: Learner):
         self.parameters_history(learner.iteration)
 
     def get_stats(self) -> pd.DataFrame:
@@ -231,3 +259,64 @@ class TrainParametersCallback(Callback):
             tmp["call"] = np.arange(len(tmp))
             all_stats.append(tmp)
         return pd.concat(all_stats, ignore_index=True)
+
+
+@dataclass
+class LossWithLR:
+    iteration: int
+    batch: int
+    epoch: int
+    loss: float
+    lr: float
+
+
+class LRFinderCallback(Callback):
+    losses: T.List[LossWithLR]
+
+    def __init__(
+        self,
+        start_lr: float,
+        end_lr: float,
+        num_iterations: int,
+        stop_at_jump: bool = True,
+    ):
+        self.start_lr = start_lr
+        self.end_lr = end_lr
+        self.num_iterations = num_iterations if num_iterations > 5 else 6
+        self.stop_at_jump = stop_at_jump
+        self.best_loss = float("inf")
+        self.losses = []
+
+    def schedule(self, start: float, stop: float, pct: float) -> float:
+        return start * (stop / start) ** pct
+
+    def before_batch(self, learner: Learner):
+        self.lr = self.schedule(
+            self.start_lr, self.end_lr, learner.iteration / self.num_iterations
+        )
+
+        for param_group in learner.optimizer.param_groups:
+            param_group["lr"] = self.lr
+
+    def after_batch(self, learner: Learner):
+        current_loss = float(learner.loss.detach().numpy())
+        self.losses.append(
+            LossWithLR(
+                learner.iteration,
+                learner.batch,
+                learner.epoch,
+                current_loss,
+                self.lr,
+            )
+        )
+        if current_loss < self.best_loss:
+            self.best_loss = current_loss
+        if current_loss > 4 * self.best_loss and self.stop_at_jump:
+            raise CancelFitException()
+        if learner.iteration >= self.num_iterations:
+            raise CancelFitException()
+
+    def get_losses(self) -> pd.DataFrame:
+        return pd.DataFrame([asdict(l) for l in self.losses])
+
+    # TODO: implement saving and loading of model before and after execution of lr scan
