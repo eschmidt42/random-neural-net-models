@@ -48,6 +48,7 @@ charset-normalizer==3.3.2
     #   requests
 click==8.1.7
     # via
+    #   -c requirements/core.txt
     #   black
     #   bumpver
 colorama==0.4.6
@@ -245,8 +246,10 @@ prometheus-client==0.17.1
     # via jupyter-server
 prompt-toolkit==3.0.39
     # via ipython
-psutil==5.9.5
-    # via ipykernel
+psutil==5.9.8
+    # via
+    #   -c requirements/core.txt
+    #   ipykernel
 ptyprocess==0.7.0
     # via
     #   pexpect

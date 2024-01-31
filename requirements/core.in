@@ -10,3 +10,5 @@ rich
 tqdm
 einops
 transformers
+wandb
+tensordict
