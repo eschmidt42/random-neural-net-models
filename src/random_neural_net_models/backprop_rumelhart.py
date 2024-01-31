@@ -3,8 +3,12 @@ import typing as T
 
 import numpy as np
 import torch
+import torch.nn as nn
+import torch.nn.modules.loss as torch_loss
 import tqdm
 from sklearn import base
+
+import random_neural_net_models.data as rnnm_data
 
 
 def sigmoid(z: torch.Tensor) -> torch.Tensor:
@@ -140,3 +144,48 @@ class Rumelhart1986PerceptronClassifier(
     def predict(self, X: np.ndarray) -> np.ndarray:
         y_pred = self.predict_proba(X)
         return y_pred > 0.5
+
+
+class RumelhartBlock(nn.Module):
+    def __init__(self, n_in: int, n_out: int):
+        super().__init__()
+        self.lin = nn.Linear(n_in, n_out)
+        gain = nn.init.calculate_gain("sigmoid")
+        nn.init.xavier_normal_(self.lin.weight, gain=gain)
+        self.act = nn.Sigmoid()
+        self.block = nn.Sequential(self.lin, self.act)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.block(x)
+
+
+# TODO: implement using wandb logging
+class Rumelhart1986PytorchPerceptron(nn.Module):
+    def __init__(
+        self,
+        n_hidden: T.Tuple[int] = (10, 5, 1),
+    ):
+        super().__init__()
+        self.n_hidden = n_hidden
+
+        components = [
+            RumelhartBlock(n_in, n_out)
+            for (n_in, n_out) in zip(n_hidden[:-1], n_hidden[1:])
+        ]
+
+        self.net = nn.Sequential(*components)
+
+    def forward(
+        self, input: T.Union[rnnm_data.XyDataTrain, rnnm_data.XyDataEval]
+    ) -> torch.Tensor:
+        return self.net(input.x)
+
+
+class BCELoss(torch_loss.BCELoss):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def forward(
+        self, inference: torch.Tensor, input: rnnm_data.XyDataTrain
+    ) -> torch.Tensor:
+        return super().forward(inference, input.y)
