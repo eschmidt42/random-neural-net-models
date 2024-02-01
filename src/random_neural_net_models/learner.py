@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
+import datetime
+import shutil
 import typing as T
 from dataclasses import asdict
 from enum import Enum
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -39,10 +42,19 @@ class Events(Enum):
 # TODO: add logging of activations, weights, gradient and losses using wandb
 
 
+def get_learner_name() -> str:
+    return f"learner-{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.pt"
+
+
 class Learner:
     model: nn.Module
     optimizer: Optimizer
     loss_func: torch_loss._Loss
+    loss: torch.Tensor
+    losses: torch.Tensor
+    smooth_loss: torch.Tensor
+    smooth_count: int
+    save_dir: Path
 
     def __init__(
         self,
@@ -50,6 +62,7 @@ class Learner:
         optimizer: Optimizer,
         loss_func: torch_loss._Loss,
         callbacks: T.List[Callback] = None,
+        save_dir: Path = None,
     ):
         self.model = model
         self.optimizer = optimizer
@@ -58,7 +71,16 @@ class Learner:
             self.registered_callbacks = []
         else:
             self.registered_callbacks = callbacks
+
+        self.save_dir = (
+            save_dir.resolve().absolute() if save_dir is not None else None
+        )
+
         self.iteration = 0
+        self.smooth_count = 0
+        self.smooth_val = torch.tensor(0.0)
+        self.smooth_loss = torch.tensor(torch.inf)
+        self.losses = torch.tensor([]).float()
 
     def callback(self, event: Events):
         relevant_callbacks = [
@@ -67,6 +89,18 @@ class Learner:
         for callback in relevant_callbacks:
             getattr(callback, event.value)(self)
 
+    # TODO: this does not produce the expected loss vs lr curve for rumelhart nb - is this correct?
+    def _update_smooth_loss(self):
+        self.losses = torch.cat(
+            (self.losses, torch.tensor([self.loss.detach()]))
+        )
+        beta = 0.98
+        self.smooth_count += 1
+        self.smooth_val = torch.lerp(
+            self.loss.detach().mean(), self.smooth_val, beta
+        )
+        self.smooth_loss = self.smooth_val / (1 - beta**self.smooth_count)
+
     def do_batch_train(self, tensordict: TensorDict):
         self.callback(Events.before_batch)
         self.optimizer.zero_grad()
@@ -74,6 +108,7 @@ class Learner:
         self.loss = self.loss_func(inference, tensordict)
         self.callback(Events.after_loss)
         self.loss.backward()
+        self._update_smooth_loss()
         self.optimizer.step()
         self.callback(Events.after_batch)
         self.iteration += 1
@@ -84,8 +119,19 @@ class Learner:
         ):
             self.do_batch_train(tensordict)
 
-    def fit(self, dataloader: DataLoader, n_epochs: int):
+    def fit(
+        self,
+        dataloader: DataLoader,
+        n_epochs: int,
+        callbacks: T.List[Callback] = None,
+    ):
         # TODO: add validation loop
+
+        if callbacks is not None:
+            print(f"replacing {self.registered_callbacks=} with {callbacks=}")
+            registered_callbacks = self.registered_callbacks
+            self.registered_callbacks = callbacks
+
         self.model.train()
         self.callback(Events.before_train)
         for self.epoch in tqdm.tqdm(
@@ -110,6 +156,18 @@ class Learner:
 
         self.callback(Events.after_train)
 
+        if callbacks is not None:
+            print(f"restoring {registered_callbacks=}")
+            self.registered_callbacks = registered_callbacks
+
+    def find_learning_rate(
+        self,
+        dataloader: DataLoader,
+        n_epochs: int,
+        lr_find_callback: "LRFinderCallback",
+    ):
+        self.fit(dataloader, n_epochs, [lr_find_callback])
+
     @torch.no_grad()
     def predict(self, dataloader: DataLoader) -> torch.Tensor:
         self.model.eval()
@@ -120,6 +178,35 @@ class Learner:
             inference.append(self.model(tensordict))
 
         return torch.concat(inference)
+
+    def save(self):
+        if self.save_dir is None:
+            msg = f"In order to perform lr search `save_dir` needs to be passed to learner to write the model to and load backups from"
+            raise ValueError(msg)
+        if not self.save_dir.exists():
+            msg = f"The path {self.save_dir=} does not exist"
+            raise ValueError(msg)
+
+        self.learner_path = self.save_dir / get_learner_name()
+        if self.learner_path.exists():
+            msg = f"The file {self.learner_path=} already exists."
+            raise ValueError(msg)
+
+        print(f"writing learner to {self.learner_path=}")
+
+        state = {
+            "model": self.model.state_dict(),
+            "optimizer": self.optimizer.state_dict(),
+        }
+        torch.save(state, self.learner_path, pickle_protocol=2)
+        print(f"done writing")
+
+    def load(self):
+        print(f"reading learner from {self.learner_path=}")
+        state = torch.load(self.learner_path)
+        self.model.load_state_dict(state["model"])
+        self.optimizer.load_state_dict(state["optimizer"])
+        print(f"done reading")
 
 
 @dataclass
@@ -267,6 +354,7 @@ class LossWithLR:
     batch: int
     epoch: int
     loss: float
+    smooth_loss: float
     lr: float
 
 
@@ -286,6 +374,7 @@ class LRFinderCallback(Callback):
         self.stop_at_jump = stop_at_jump
         self.best_loss = float("inf")
         self.losses = []
+        self.smooth_losses = []
 
     def schedule(self, start: float, stop: float, pct: float) -> float:
         return start * (stop / start) ** pct
@@ -300,23 +389,33 @@ class LRFinderCallback(Callback):
 
     def after_batch(self, learner: Learner):
         current_loss = float(learner.loss.detach().numpy())
+        current_smooth_loss = float(learner.smooth_loss.detach().numpy())
         self.losses.append(
             LossWithLR(
                 learner.iteration,
                 learner.batch,
                 learner.epoch,
                 current_loss,
+                current_smooth_loss,
                 self.lr,
             )
         )
-        if current_loss < self.best_loss:
-            self.best_loss = current_loss
-        if current_loss > 4 * self.best_loss and self.stop_at_jump:
+        if current_smooth_loss < self.best_loss:
+            self.best_loss = current_smooth_loss
+        if current_smooth_loss > 4 * self.best_loss and self.stop_at_jump:
             raise CancelFitException()
         if learner.iteration >= self.num_iterations:
             raise CancelFitException()
 
+    def before_train(self, learner: Learner):
+        # https://github.com/fastai/fastai/blob/43dbef38fe52b8b074d91ee1773e702a1401a486/fastai/callback/schedule.py#L180
+        learner.save()
+
+    def after_train(self, learner: Learner):
+        # https://github.com/fastai/fastai/blob/43dbef38fe52b8b074d91ee1773e702a1401a486/fastai/callback/schedule.py#L199
+        learner.optimizer.zero_grad()
+        learner.load()
+        learner.learner_path.unlink()
+
     def get_losses(self) -> pd.DataFrame:
         return pd.DataFrame([asdict(l) for l in self.losses])
-
-    # TODO: implement saving and loading of model before and after execution of lr scan
