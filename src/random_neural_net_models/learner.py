@@ -563,7 +563,7 @@ class LRFinderCallback(Callback):
         )
         sns.lineplot(data=lr_find_data, x="lr", y="loss", ax=ax, label="raw")
         ax.legend(title="loss type")
-        ax.set(ylabel="loss")
+        ax.set(ylabel="loss", xscale="log")
         plt.tight_layout()
 
 

@@ -119,10 +119,9 @@ class MNISTDatasetTrain(Dataset):
         img = rearrange(img, "(h w) -> 1 h w", h=self.edge, w=self.edge)
 
         label = torch.tensor([int(self.y.iloc[idx])])
-        # print(f"{label.shape=}")
+
         label = F.one_hot(label, num_classes=self.num_classes)
-        # print(f"{label.shape=}")
-        # label = rearrange(label, "n -> 1 n")
+        label[label == 0] = -1  # True = 1, False = -1
 
         return img, label
 
