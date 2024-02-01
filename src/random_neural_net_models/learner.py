@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import datetime
-import shutil
 import typing as T
 from dataclasses import asdict
 from enum import Enum
@@ -16,13 +15,13 @@ import torch.nn.modules.loss as torch_loss
 import torch.optim as optim
 import tqdm
 from pydantic.dataclasses import dataclass
-from tensordict import TensorDict, tensorclass
+from tensordict import TensorDict
 from torch.optim import Optimizer
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 
 import random_neural_net_models.telemetry as rnnm_telemetry
 
-# fastai callback events: https://docs.fast.ai/callback.core.html#events
+# TODO: add logging
 
 
 class Callback:
@@ -34,14 +33,15 @@ class CancelFitException(Exception):
 
 
 class Events(Enum):
+    # fastai callback events: https://docs.fast.ai/callback.core.html#events
     after_loss = "after_loss"
     before_train = "before_train"
     after_train = "after_train"
     before_batch = "before_batch"
     after_batch = "after_batch"
+    after_epoch = "after_epoch"
 
 
-# TODO: add hyperparam scheduler https://pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate
 # TODO: add logging of activations, weights, gradient and losses using wandb
 
 
@@ -58,6 +58,7 @@ class Learner:
     smooth_loss: torch.Tensor
     smooth_count: int
     save_dir: Path
+    loss_valid: torch.Tensor
 
     def __init__(
         self,
@@ -87,7 +88,9 @@ class Learner:
 
     def callback(self, event: Events):
         relevant_callbacks = [
-            c for c in self.registered_callbacks if hasattr(c, event.value)
+            c
+            for c in self.registered_callbacks
+            if isinstance(c, Callback) and hasattr(c, event.value)
         ]
         for callback in relevant_callbacks:
             getattr(callback, event.value)(self)
@@ -105,6 +108,8 @@ class Learner:
         self.smooth_loss = self.smooth_val / (1 - beta**self.smooth_count)
 
     def do_batch_train(self, tensordict: TensorDict):
+        self.model.train()
+
         self.callback(Events.before_batch)
         self.optimizer.zero_grad()
         inference = self.model(tensordict)
@@ -116,32 +121,54 @@ class Learner:
         self.callback(Events.after_batch)
         self.iteration += 1
 
-    def do_epoch(self, dataloader: DataLoader):
+    def do_batch_valid(self, tensordict: TensorDict) -> torch.Tensor:
+        self.model.eval()
+        with torch.no_grad():
+            inference = self.model(tensordict)
+            return self.loss_func(inference, tensordict)
+
+    def do_epoch(
+        self, dataloader_train: DataLoader, dataloader_valid: DataLoader = None
+    ):
         for self.batch, tensordict in tqdm.tqdm(
-            enumerate(dataloader), total=len(dataloader), desc="batch"
+            enumerate(dataloader_train),
+            total=len(dataloader_train),
+            desc="batch (train)",
         ):
             self.do_batch_train(tensordict)
 
+        if dataloader_valid is not None:
+            losses_valid = []
+            for tensordict in tqdm.tqdm(
+                dataloader_valid,
+                desc="batch (valid)",
+                total=len(dataloader_valid),
+            ):
+                losses_valid.append(self.do_batch_valid(tensordict))
+            self.loss_valid = torch.tensor(losses_valid).mean()
+
+        self.callback(Events.after_epoch)
+
     def fit(
         self,
-        dataloader: DataLoader,
+        dataloader_train: DataLoader,
         n_epochs: int,
+        dataloader_valid: DataLoader = None,
         callbacks: T.List[Callback] = None,
     ):
-        # TODO: add validation loop
-
         if callbacks is not None:
             print(f"replacing {self.registered_callbacks=} with {callbacks=}")
             registered_callbacks = self.registered_callbacks
             self.registered_callbacks = callbacks
 
-        self.model.train()
         self.callback(Events.before_train)
         for self.epoch in tqdm.tqdm(
             range(n_epochs), total=n_epochs, desc="epoch"
         ):
             try:
-                self.do_epoch(dataloader)
+                self.do_epoch(
+                    dataloader_train, dataloader_valid=dataloader_valid
+                )
             except CancelFitException:
                 break
 
@@ -157,7 +184,12 @@ class Learner:
         n_epochs: int,
         lr_find_callback: "LRFinderCallback",
     ):
-        self.fit(dataloader, n_epochs, [lr_find_callback])
+        self.fit(
+            dataloader_train=dataloader,
+            n_epochs=n_epochs,
+            dataloader_valid=None,
+            callbacks=[lr_find_callback],
+        )
 
     @torch.no_grad()
     def predict(self, dataloader: DataLoader) -> torch.Tensor:
@@ -206,6 +238,7 @@ class Loss:
     batch: int
     epoch: int
     loss: float
+    loss_valid: float = None
 
 
 class TrainLossCallback(Callback):
@@ -224,13 +257,29 @@ class TrainLossCallback(Callback):
             )
         )
 
+    def after_epoch(self, learner: Learner):
+        if hasattr(learner, "loss_valid"):
+            loss_valid = float(learner.loss_valid.detach().numpy())
+            self.losses[-1].loss_valid = loss_valid
+
     def get_losses(self) -> pd.DataFrame:
         return pd.DataFrame([asdict(l) for l in self.losses])
 
     def plot(self):
-        fig, ax = plt.subplots(figsize=(12, 4))
+        fig, ax = plt.subplots(figsize=(10, 4))
         losses = self.get_losses()
-        sns.lineplot(data=losses, x="iteration", y="loss", ax=ax)
+        sns.lineplot(data=losses, x="iteration", y="loss", ax=ax, label="train")
+        losses_valid = losses.loc[losses["loss_valid"].notna(), :]
+        if len(losses_valid) > 0:
+            sns.scatterplot(
+                data=losses,
+                x="iteration",
+                y="loss_valid",
+                ax=ax,
+                label="valid",
+                color="orange",
+            )
+        ax.legend(title="set")
         plt.tight_layout()
 
 
