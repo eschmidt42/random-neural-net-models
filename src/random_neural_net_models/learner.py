@@ -20,8 +20,9 @@ from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
 import random_neural_net_models.telemetry as rnnm_telemetry
+import random_neural_net_models.utils as utils
 
-# TODO: add logging
+logger = utils.get_logger("learner.py")
 
 
 class Callback:
@@ -157,7 +158,9 @@ class Learner:
         callbacks: T.List[Callback] = None,
     ):
         if callbacks is not None:
-            print(f"replacing {self.registered_callbacks=} with {callbacks=}")
+            logger.info(
+                f"replacing {self.registered_callbacks=} with {callbacks=}"
+            )
             registered_callbacks = self.registered_callbacks
             self.registered_callbacks = callbacks
 
@@ -175,7 +178,7 @@ class Learner:
         self.callback(Events.after_train)
 
         if callbacks is not None:
-            print(f"restoring {registered_callbacks=}")
+            logger.info(f"restoring {registered_callbacks=}")
             self.registered_callbacks = registered_callbacks
 
     def find_learning_rate(
@@ -215,21 +218,21 @@ class Learner:
             msg = f"The file {self.learner_path=} already exists."
             raise ValueError(msg)
 
-        print(f"writing learner to {self.learner_path=}")
+        logger.info(f"writing learner to {self.learner_path=}")
 
         state = {
             "model": self.model.state_dict(),
             "optimizer": self.optimizer.state_dict(),
         }
         torch.save(state, self.learner_path, pickle_protocol=2)
-        print(f"done writing")
+        logger.info(f"done writing")
 
     def load(self):
-        print(f"reading learner from {self.learner_path=}")
+        logger.info(f"reading learner from {self.learner_path=}")
         state = torch.load(self.learner_path)
         self.model.load_state_dict(state["model"])
         self.optimizer.load_state_dict(state["optimizer"])
-        print(f"done reading")
+        logger.info(f"done reading")
 
 
 @dataclass
