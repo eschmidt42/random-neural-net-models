@@ -268,20 +268,42 @@ class TrainLossCallback(Callback):
     def get_losses(self) -> pd.DataFrame:
         return pd.DataFrame([asdict(l) for l in self.losses])
 
-    def plot(self):
+    def get_losses_valid(self) -> pd.DataFrame:
+        return self.get_losses().loc[self.get_losses()["loss_valid"].notna(), :]
+
+    def plot(self, window: int = 10):
         fig, ax = plt.subplots(figsize=(10, 4))
         losses = self.get_losses()
-        sns.lineplot(data=losses, x="iteration", y="loss", ax=ax, label="train")
-        losses_valid = losses.loc[losses["loss_valid"].notna(), :]
+        sns.scatterplot(
+            data=losses,
+            x="iteration",
+            y="loss",
+            ax=ax,
+            label="train",
+            alpha=0.1,
+        )
+        losses["loss_rolling"] = losses.rolling(window=window)["loss"].mean()
+        sns.lineplot(
+            data=losses,
+            x="iteration",
+            y="loss_rolling",
+            ax=ax,
+            label="train (rolling)",
+            color="black",
+            alpha=0.5,
+        )
+
+        losses_valid = self.get_losses_valid()
         if len(losses_valid) > 0:
-            sns.scatterplot(
-                data=losses,
+            sns.lineplot(
+                data=losses_valid,
                 x="iteration",
                 y="loss_valid",
                 ax=ax,
                 label="valid",
-                color="orange",
+                color="red",
             )
+
         ax.legend(title="set")
         plt.tight_layout()
 
@@ -328,15 +350,17 @@ class TrainActivationsCallback(Callback):
         fig, axs = plt.subplots(figsize=(12, 12), nrows=3, sharex=True)
 
         ax = axs[0]
-        sns.scatterplot(data=activations, x="call", y="mean", hue="name", ax=ax)
+        sns.lineplot(data=activations, x="call", y="mean", hue="name", ax=ax)
+        ax.get_legend().remove()
 
         ax = axs[1]
-        sns.scatterplot(data=activations, x="call", y="std", hue="name", ax=ax)
+        sns.lineplot(data=activations, x="call", y="std", hue="name", ax=ax)
 
         ax = axs[2]
-        sns.scatterplot(
+        sns.lineplot(
             data=activations, x="call", y="frac_dead", hue="name", ax=ax
         )
+        ax.get_legend().remove()
 
         plt.tight_layout()
 
@@ -382,20 +406,21 @@ class TrainGradientsCallback(Callback):
         fig, axs = plt.subplots(figsize=(12, 12), nrows=4, sharex=True)
 
         ax = axs[0]
-        sns.scatterplot(data=gradients, x="call", y="mean", hue="name", ax=ax)
+        sns.lineplot(data=gradients, x="call", y="mean", hue="name", ax=ax)
+        ax.get_legend().remove()
 
         ax = axs[1]
-        sns.scatterplot(data=gradients, x="call", y="std", hue="name", ax=ax)
+        sns.lineplot(data=gradients, x="call", y="std", hue="name", ax=ax)
 
         ax = axs[2]
-        sns.scatterplot(
-            data=gradients, x="call", y="frac_dead", hue="name", ax=ax
-        )
+        sns.lineplot(data=gradients, x="call", y="frac_dead", hue="name", ax=ax)
+        ax.get_legend().remove()
 
         ax = axs[3]
-        sns.scatterplot(
+        sns.lineplot(
             data=gradients, x="call", y="abs_perc90", hue="name", ax=ax
         )
+        ax.get_legend().remove()
 
         plt.tight_layout()
 
@@ -430,6 +455,8 @@ class TrainParametersCallback(Callback):
     def get_stats(self) -> pd.DataFrame:
         all_stats = []
         for name, stats in self.parameters_history.stats.items():
+            if not (name.endswith("weight") or name.endswith("bias")):
+                continue
             tmp = pd.DataFrame([asdict(v) for v in stats])
             tmp["name"] = name
             tmp["call"] = np.arange(len(tmp))
@@ -438,18 +465,20 @@ class TrainParametersCallback(Callback):
 
     def plot(self):
         parameters = self.get_stats()
-        fig, axs = plt.subplots(figsize=(12, 12), nrows=3, sharex=True)
+        fig, axs = plt.subplots(figsize=(10, 10), nrows=3, sharex=True)
 
         ax = axs[0]
-        sns.scatterplot(data=parameters, x="iter", y="mean", hue="name", ax=ax)
+        sns.lineplot(data=parameters, x="iter", y="mean", hue="name", ax=ax)
+        ax.get_legend().remove()
 
         ax = axs[1]
-        sns.scatterplot(data=parameters, x="iter", y="std", hue="name", ax=ax)
+        sns.lineplot(data=parameters, x="iter", y="std", hue="name", ax=ax)
 
         ax = axs[2]
-        sns.scatterplot(
+        sns.lineplot(
             data=parameters, x="iter", y="abs_perc90", hue="name", ax=ax
         )
+        ax.get_legend().remove()
 
         plt.tight_layout()
 
@@ -534,6 +563,7 @@ class LRFinderCallback(Callback):
         )
         sns.lineplot(data=lr_find_data, x="lr", y="loss", ax=ax, label="raw")
         ax.legend(title="loss type")
+        ax.set(ylabel="loss")
         plt.tight_layout()
 
 
@@ -543,3 +573,23 @@ class EveryBatchSchedulerCallback(Callback):
 
     def after_batch(self, learner: Learner):
         self.scheduler.step()
+
+
+class EarlyStoppingCallback(Callback):
+    def __init__(self, patience: int):
+        self.patience = patience
+        self.n_epochs_worse = 0
+        self.best_loss = torch.tensor(torch.inf)
+
+    def after_epoch(self, learner: Learner):
+        if not hasattr(learner, "loss_valid"):
+            msg = "Learner is missing attribute loss_valid. Did you pass dataloader_valid to Learner.fit?"
+            raise ValueError(msg)
+
+        if learner.loss_valid > self.best_loss:
+            self.n_epochs_worse += 1
+            if self.n_epochs_worse > self.patience:
+                raise CancelFitException()
+        else:
+            self.best_loss = learner.loss_valid
+            self.n_epochs_worse = 0

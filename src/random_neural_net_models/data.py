@@ -2,11 +2,17 @@
 import typing as T
 
 import numpy as np
+import pandas as pd
 import torch
+import torch.nn.functional as F
 from einops import rearrange
 from einops.layers.torch import Rearrange
 from tensordict import TensorDict, tensorclass
 from torch.utils.data import DataLoader, Dataset
+
+# ============================================
+# numpy tabular dataset
+# ============================================
 
 
 @tensorclass
@@ -68,3 +74,64 @@ class TabularNumpyDatasetEval(Dataset):
 def tabular_numpy_collate_eval(input: T.Tuple[torch.Tensor]) -> XyDataEval:
     x = torch.concat(input).float()
     return XyDataEval(x=x, batch_size=[x.shape[0]])
+
+
+# ============================================
+# mnist image dataset
+# ============================================
+
+
+@tensorclass
+class MNISTDataTrain:
+    image: torch.Tensor
+    label: torch.Tensor
+
+
+class MNISTDatasetTrain(Dataset):
+    def __init__(
+        self,
+        X: pd.DataFrame,
+        y: pd.Series,
+        edge: int = 28,
+        f: float = 255.0,
+        num_classes: int = 10,
+    ):
+        self.X = X
+        self.y = y
+        self.n = len(X)
+        if X.shape[0] != y.shape[0]:
+            raise ValueError(
+                f"X and y must have same length, got {X.shape[0]} and {y.shape[0]}"
+            )
+        if y is not None and y.ndim > 1:
+            raise ValueError(f"y must be 1-dimensional, got {y.ndim}")
+        self.edge = edge
+        self.f = f
+        self.num_classes = num_classes
+
+    def __len__(self):
+        return self.n
+
+    def __getitem__(self, idx: int) -> T.Tuple[torch.Tensor, torch.Tensor]:
+        img = torch.from_numpy(
+            self.X.iloc[idx].values / self.f
+        ).float()  # normalizing
+        img = rearrange(img, "(h w) -> 1 h w", h=self.edge, w=self.edge)
+
+        label = torch.tensor([int(self.y.iloc[idx])])
+        # print(f"{label.shape=}")
+        label = F.one_hot(label, num_classes=self.num_classes)
+        # print(f"{label.shape=}")
+        # label = rearrange(label, "n -> 1 n")
+
+        return img, label
+
+
+def mnist_collate_train(
+    input: T.Tuple[torch.Tensor, torch.Tensor]
+) -> MNISTDataTrain:
+    images = torch.concat([v[0] for v in input]).float()
+    labels = torch.concat([v[1] for v in input]).float()
+    return MNISTDataTrain(
+        image=images, label=labels, batch_size=[images.shape[0]]
+    )
