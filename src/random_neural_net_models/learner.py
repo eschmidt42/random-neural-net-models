@@ -6,11 +6,14 @@ from dataclasses import asdict
 from enum import Enum
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
 import torch
 import torch.nn as nn
 import torch.nn.modules.loss as torch_loss
+import torch.optim as optim
 import tqdm
 from pydantic.dataclasses import dataclass
 from tensordict import TensorDict, tensorclass
@@ -141,18 +144,6 @@ class Learner:
                 self.do_epoch(dataloader)
             except CancelFitException:
                 break
-            # for self.batch, tensordict in tqdm.tqdm(
-            #     enumerate(dataloader), total=len(dataloader), desc="batch"
-            # ):
-            #     self.callback(Events.before_batch)
-            #     self.optimizer.zero_grad()
-            #     inference = self.model(tensordict)
-            #     self.loss = self.loss_func(inference, tensordict)
-            #     self.callback(Events.after_loss)
-            #     self.loss.backward()
-            #     self.optimizer.step()
-            #     self.callback(Events.after_batch)
-            #     self.iteration += 1
 
         self.callback(Events.after_train)
 
@@ -236,6 +227,12 @@ class TrainLossCallback(Callback):
     def get_losses(self) -> pd.DataFrame:
         return pd.DataFrame([asdict(l) for l in self.losses])
 
+    def plot(self):
+        fig, ax = plt.subplots(figsize=(12, 4))
+        losses = self.get_losses()
+        sns.lineplot(data=losses, x="iteration", y="loss", ax=ax)
+        plt.tight_layout()
+
 
 class TrainActivationsCallback(Callback):
     activations_history: rnnm_telemetry.ActivationsHistory
@@ -272,6 +269,24 @@ class TrainActivationsCallback(Callback):
             tmp["call"] = np.arange(len(tmp))
             all_stats.append(tmp)
         return pd.concat(all_stats, ignore_index=True)
+
+    def plot(self):
+        activations = self.get_stats()
+
+        fig, axs = plt.subplots(figsize=(12, 12), nrows=3, sharex=True)
+
+        ax = axs[0]
+        sns.scatterplot(data=activations, x="call", y="mean", hue="name", ax=ax)
+
+        ax = axs[1]
+        sns.scatterplot(data=activations, x="call", y="std", hue="name", ax=ax)
+
+        ax = axs[2]
+        sns.scatterplot(
+            data=activations, x="call", y="frac_dead", hue="name", ax=ax
+        )
+
+        plt.tight_layout()
 
 
 class TrainGradientsCallback(Callback):
@@ -310,6 +325,28 @@ class TrainGradientsCallback(Callback):
             all_stats.append(tmp)
         return pd.concat(all_stats, ignore_index=True)
 
+    def plot(self):
+        gradients = self.get_stats()
+        fig, axs = plt.subplots(figsize=(12, 12), nrows=4, sharex=True)
+
+        ax = axs[0]
+        sns.scatterplot(data=gradients, x="call", y="mean", hue="name", ax=ax)
+
+        ax = axs[1]
+        sns.scatterplot(data=gradients, x="call", y="std", hue="name", ax=ax)
+
+        ax = axs[2]
+        sns.scatterplot(
+            data=gradients, x="call", y="frac_dead", hue="name", ax=ax
+        )
+
+        ax = axs[3]
+        sns.scatterplot(
+            data=gradients, x="call", y="abs_perc90", hue="name", ax=ax
+        )
+
+        plt.tight_layout()
+
 
 class TrainParametersCallback(Callback):
     parameters_history: rnnm_telemetry.ParametersHistory
@@ -346,6 +383,23 @@ class TrainParametersCallback(Callback):
             tmp["call"] = np.arange(len(tmp))
             all_stats.append(tmp)
         return pd.concat(all_stats, ignore_index=True)
+
+    def plot(self):
+        parameters = self.get_stats()
+        fig, axs = plt.subplots(figsize=(12, 12), nrows=3, sharex=True)
+
+        ax = axs[0]
+        sns.scatterplot(data=parameters, x="iter", y="mean", hue="name", ax=ax)
+
+        ax = axs[1]
+        sns.scatterplot(data=parameters, x="iter", y="std", hue="name", ax=ax)
+
+        ax = axs[2]
+        sns.scatterplot(
+            data=parameters, x="iter", y="abs_perc90", hue="name", ax=ax
+        )
+
+        plt.tight_layout()
 
 
 @dataclass
@@ -419,3 +473,21 @@ class LRFinderCallback(Callback):
 
     def get_losses(self) -> pd.DataFrame:
         return pd.DataFrame([asdict(l) for l in self.losses])
+
+    def plot(self):
+        fig, ax = plt.subplots(figsize=(12, 4))
+        lr_find_data = self.get_losses()
+        sns.lineplot(
+            data=lr_find_data, x="lr", y="smooth_loss", ax=ax, label="smooth"
+        )
+        sns.lineplot(data=lr_find_data, x="lr", y="loss", ax=ax, label="raw")
+        ax.legend(title="loss type")
+        plt.tight_layout()
+
+
+class EveryBatchSchedulerCallback(Callback):
+    def __init__(self, scheduler: optim.lr_scheduler.LRScheduler):
+        self.scheduler = scheduler
+
+    def after_batch(self, learner: Learner):
+        self.scheduler.step()
