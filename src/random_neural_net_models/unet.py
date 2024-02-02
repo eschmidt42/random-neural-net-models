@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 from einops.layers.torch import Rearrange
 
+import random_neural_net_models.data as rnnm_data
 import random_neural_net_models.utils as utils
 
 logger = utils.get_logger("unet.py")
@@ -370,3 +371,8 @@ class UNetModel(nn.Module):
         x = self.wrangle_output(x)
 
         return x
+
+
+class UNetModel2(UNetModel):
+    def forward(self, input: rnnm_data.MNISTDataTrain) -> torch.Tensor:
+        return super().forward(input.image)

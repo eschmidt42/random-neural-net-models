@@ -571,7 +571,7 @@ class LRFinderCallback(Callback):
     def get_losses(self) -> pd.DataFrame:
         return pd.DataFrame([asdict(l) for l in self.losses])
 
-    def plot(self):
+    def plot(self, yscale: str = "linear"):
         fig, ax = plt.subplots(figsize=(12, 4))
         lr_find_data = self.get_losses()
         sns.lineplot(
@@ -579,7 +579,7 @@ class LRFinderCallback(Callback):
         )
         sns.lineplot(data=lr_find_data, x="lr", y="loss", ax=ax, label="raw")
         ax.legend(title="loss type")
-        ax.set(ylabel="loss", xscale="log")
+        ax.set(ylabel="loss", xscale="log", yscale=yscale)
         plt.tight_layout()
 
 
