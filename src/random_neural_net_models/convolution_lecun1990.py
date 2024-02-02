@@ -227,13 +227,3 @@ class Model(nn.Module):
 class Model2(Model):
     def forward(self, input: rnnm_data.MNISTDataTrain):
         return self.net(input.image)
-
-
-class MSELoss(torch_loss.MSELoss):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def forward(
-        self, inference: torch.Tensor, input: rnnm_data.MNISTDataTrain
-    ) -> torch.Tensor:
-        return super().forward(inference, input.label)
