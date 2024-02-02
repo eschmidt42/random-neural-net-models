@@ -215,6 +215,13 @@ class CNNDenseVariationalAutoEncoder2(CNNDenseVariationalAutoEncoder):
         return super().forward(input.image)
 
 
+class DenseVariationalAutoEncoder2(DenseVariationalAutoEncoder):
+    def forward(
+        self, input: rnnm_data.MNISTDataTrain
+    ) -> T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        return super().forward(input.image)
+
+
 def calc_distribution_divergence_loss(
     input: T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor], x: torch.Tensor
 ) -> torch.Tensor:
