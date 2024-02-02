@@ -23,3 +23,13 @@ class MSELossMNISTAutoencoder(torch_loss.MSELoss):
         self, inference: torch.Tensor, input: rnnm_data.MNISTDataTrain
     ) -> torch.Tensor:
         return super().forward(inference, input.image)
+
+
+class CrossEntropyMNIST(torch_loss.CrossEntropyLoss):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def forward(
+        self, inference: torch.Tensor, input: rnnm_data.MNISTDataTrain
+    ) -> torch.Tensor:
+        return super().forward(inference, input.label)

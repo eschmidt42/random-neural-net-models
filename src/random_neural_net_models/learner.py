@@ -104,6 +104,7 @@ class Learner:
         self.losses = torch.cat(
             (self.losses, torch.tensor([self.loss.detach().cpu()]))
         )
+
         beta = 0.98
         self.smooth_count += 1
         self.smooth_val = torch.lerp(

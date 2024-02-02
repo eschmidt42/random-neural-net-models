@@ -95,6 +95,7 @@ class MNISTDatasetTrain(Dataset):
         edge: int = 28,
         f: float = 255.0,
         num_classes: int = 10,
+        one_hot: bool = True,
     ):
         self.X = X
         self.y = y
@@ -108,6 +109,7 @@ class MNISTDatasetTrain(Dataset):
         self.edge = edge
         self.f = f
         self.num_classes = num_classes
+        self.one_hot = one_hot
 
     def __len__(self):
         return self.n
@@ -120,8 +122,12 @@ class MNISTDatasetTrain(Dataset):
 
         label = torch.tensor([int(self.y.iloc[idx])])
 
-        label = F.one_hot(label, num_classes=self.num_classes)
-        label[label == 0] = -1  # True = 1, False = -1
+        if self.one_hot:
+            label = F.one_hot(label, num_classes=self.num_classes)
+            label[label == 0] = -1  # True = 1, False = -1
+            label = label.float()
+        else:
+            label = torch.tensor(label, dtype=torch.int64)
 
         return img, label
 
@@ -129,8 +135,8 @@ class MNISTDatasetTrain(Dataset):
 def mnist_collate_train(
     input: T.Tuple[torch.Tensor, torch.Tensor]
 ) -> MNISTDataTrain:
-    images = torch.concat([v[0] for v in input]).float()
-    labels = torch.concat([v[1] for v in input]).float()
+    images = torch.concat([v[0] for v in input])  # .float()
+    labels = torch.concat([v[1] for v in input])  # .float()
     return MNISTDataTrain(
         image=images, label=labels, batch_size=[images.shape[0]]
     )
