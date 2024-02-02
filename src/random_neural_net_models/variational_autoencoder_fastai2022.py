@@ -4,9 +4,11 @@ import typing as T
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.nn.modules.loss as torch_loss
 from einops.layers.torch import Rearrange
 
 import random_neural_net_models.autoencoder_fastai2022 as ae
+import random_neural_net_models.data as rnnm_data
 
 
 class Variational(nn.Module):
@@ -206,6 +208,13 @@ class CNNDenseVariationalAutoEncoder(nn.Module):
         return x_hat, mu, logvar
 
 
+class CNNDenseVariationalAutoEncoder2(CNNDenseVariationalAutoEncoder):
+    def forward(
+        self, input: rnnm_data.MNISTDataTrain
+    ) -> T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        return super().forward(input.image)
+
+
 def calc_distribution_divergence_loss(
     input: T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor], x: torch.Tensor
 ) -> torch.Tensor:
@@ -254,6 +263,25 @@ def calc_vae_test_loss(
     divergence_loss = calc_distribution_divergence_loss(_model_output, x)
     total_loss = reconstruction_loss + divergence_loss
     return total_loss, reconstruction_loss, divergence_loss
+
+
+class VAELossMNIST(torch_loss._Loss):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def forward(
+        self,
+        inference: T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor],
+        input: rnnm_data.MNISTDataTrain,
+    ) -> torch.Tensor:
+        reconstruction_loss = calc_reconstruction_loss(
+            inference, input.image, is_sigmoid=False
+        )
+        divergence_loss = calc_distribution_divergence_loss(
+            inference, input.image
+        )
+        total_loss = reconstruction_loss + divergence_loss
+        return total_loss
 
 
 import re
