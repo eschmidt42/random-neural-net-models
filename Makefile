@@ -19,8 +19,8 @@ help:
 venv:
 	python3 -m venv .venv
 	source .venv/bin/activate && \
-	python3 -m pip install pip==23.1.2 setuptools==68.0.0 wheel==0.40.0 && \
-	pip install pip-tools==6.14.0
+	python3 -m pip install pip==23.3.2 setuptools==69.0.3 wheel==0.42.0 && \
+	pip install pip-tools==7.3.0
 
 # ==============================================================================
 # compile requirements
