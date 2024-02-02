@@ -60,6 +60,7 @@ class Learner:
     smooth_count: int
     save_dir: Path
     loss_valid: torch.Tensor
+    device: str
 
     def __init__(
         self,
@@ -68,6 +69,7 @@ class Learner:
         loss_func: torch_loss._Loss,
         callbacks: T.List[Callback] = None,
         save_dir: Path = None,
+        device: str = "cpu",
     ):
         self.model = model
         self.optimizer = optimizer
@@ -80,12 +82,13 @@ class Learner:
         self.save_dir = (
             save_dir.resolve().absolute() if save_dir is not None else None
         )
+        self.device = device
 
         self.iteration = 0
         self.smooth_count = 0
-        self.smooth_val = torch.tensor(0.0)
-        self.smooth_loss = torch.tensor(torch.inf)
-        self.losses = torch.tensor([]).float()
+        self.smooth_val = torch.tensor(0.0, device="cpu")
+        self.smooth_loss = torch.tensor(torch.inf, device="cpu")
+        self.losses = torch.tensor([], device="cpu").float()
 
     def callback(self, event: Events):
         relevant_callbacks = [
@@ -99,12 +102,12 @@ class Learner:
     # TODO: this does not produce the expected loss vs lr curve for rumelhart nb - is this correct?
     def _update_smooth_loss(self):
         self.losses = torch.cat(
-            (self.losses, torch.tensor([self.loss.detach()]))
+            (self.losses, torch.tensor([self.loss.detach().cpu()]))
         )
         beta = 0.98
         self.smooth_count += 1
         self.smooth_val = torch.lerp(
-            self.loss.detach().mean(), self.smooth_val, beta
+            self.loss.detach().mean().cpu(), self.smooth_val, beta
         )
         self.smooth_loss = self.smooth_val / (1 - beta**self.smooth_count)
 
@@ -136,7 +139,7 @@ class Learner:
             total=len(dataloader_train),
             desc="batch (train)",
         ):
-            self.do_batch_train(tensordict)
+            self.do_batch_train(tensordict.to(self.device))
 
         if dataloader_valid is not None:
             losses_valid = []
@@ -145,8 +148,10 @@ class Learner:
                 desc="batch (valid)",
                 total=len(dataloader_valid),
             ):
-                losses_valid.append(self.do_batch_valid(tensordict))
-            self.loss_valid = torch.tensor(losses_valid).mean()
+                losses_valid.append(
+                    self.do_batch_valid(tensordict.to(self.device))
+                )
+            self.loss_valid = torch.tensor(losses_valid).mean().cpu()
 
         self.callback(Events.after_epoch)
 
@@ -164,6 +169,7 @@ class Learner:
             registered_callbacks = self.registered_callbacks
             self.registered_callbacks = callbacks
 
+        self.model.to(self.device)
         self.callback(Events.before_train)
         for self.epoch in tqdm.tqdm(
             range(n_epochs), total=n_epochs, desc="epoch"
@@ -197,13 +203,14 @@ class Learner:
     @torch.no_grad()
     def predict(self, dataloader: DataLoader) -> torch.Tensor:
         self.model.eval()
+        self.model.to(self.device)
         inference = []
         for tensordict in tqdm.tqdm(
             dataloader, total=len(dataloader), desc="batch"
         ):
-            inference.append(self.model(tensordict))
+            inference.append(self.model(tensordict.to(self.device)))
 
-        return torch.concat(inference)
+        return torch.concat(inference).cpu()
 
     def save(self):
         if self.save_dir is None:
@@ -256,7 +263,7 @@ class TrainLossCallback(Callback):
                 learner.iteration,
                 learner.batch,
                 learner.epoch,
-                float(learner.loss.detach().numpy()),
+                float(learner.loss.detach().cpu().numpy()),
             )
         )
 
@@ -523,8 +530,8 @@ class LRFinderCallback(Callback):
             param_group["lr"] = self.lr
 
     def after_batch(self, learner: Learner):
-        current_loss = float(learner.loss.detach().numpy())
-        current_smooth_loss = float(learner.smooth_loss.detach().numpy())
+        current_loss = float(learner.loss.detach().cpu().numpy())
+        current_smooth_loss = float(learner.smooth_loss.detach().cpu().numpy())
         self.losses.append(
             LossWithLR(
                 learner.iteration,
@@ -586,7 +593,7 @@ class EarlyStoppingCallback(Callback):
             msg = "Learner is missing attribute loss_valid. Did you pass dataloader_valid to Learner.fit?"
             raise ValueError(msg)
 
-        if learner.loss_valid > self.best_loss:
+        if learner.loss_valid > self.best_loss.to(learner.device):
             self.n_epochs_worse += 1
             if self.n_epochs_worse > self.patience:
                 raise CancelFitException()
