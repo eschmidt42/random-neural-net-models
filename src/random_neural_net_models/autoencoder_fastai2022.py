@@ -3,6 +3,8 @@ import torch
 import torch.nn as nn
 from einops.layers.torch import Rearrange
 
+import random_neural_net_models.data as rnnm_data
+
 
 class DeConv2d(nn.Module):
     def __init__(
@@ -229,3 +231,8 @@ class CNNAutoEncoder(nn.Module):
         z = self.encoder(x)
         x_hat = self.decoder(z)
         return x_hat
+
+
+class CNNAutoEncoder2(CNNAutoEncoder):
+    def forward(self, input: rnnm_data.MNISTDataTrain):
+        return super().forward(input.image)
