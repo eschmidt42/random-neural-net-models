@@ -201,7 +201,9 @@ class Learner:
         )
 
     @torch.no_grad()
-    def predict(self, dataloader: DataLoader) -> torch.Tensor:
+    def predict(
+        self, dataloader: DataLoader, component: int = None
+    ) -> torch.Tensor:
         self.model.eval()
         self.model.to(self.device)
         inference = []
@@ -210,6 +212,11 @@ class Learner:
         ):
             inference.append(self.model(tensordict.to(self.device)))
 
+        if isinstance(component, int):
+            logger.info(
+                f"only using {component=} of each model output (e.g. for VAE only the image)"
+            )
+            inference = [v[component] for v in inference]
         return torch.concat(inference).cpu()
 
     def save(self):
@@ -278,7 +285,7 @@ class TrainLossCallback(Callback):
     def get_losses_valid(self) -> pd.DataFrame:
         return self.get_losses().loc[self.get_losses()["loss_valid"].notna(), :]
 
-    def plot(self, window: int = 10):
+    def plot(self, window: int = 10, yscale: float = "linear"):
         fig, ax = plt.subplots(figsize=(10, 4))
         losses = self.get_losses()
         sns.scatterplot(
@@ -312,6 +319,7 @@ class TrainLossCallback(Callback):
             )
 
         ax.legend(title="set")
+        ax.set(yscale=yscale)
         plt.tight_layout()
 
 
