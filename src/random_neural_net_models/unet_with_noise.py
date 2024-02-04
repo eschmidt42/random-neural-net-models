@@ -8,10 +8,15 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.nn.modules.loss as torch_loss
 import tqdm
 from einops import rearrange
 from einops.layers.torch import Rearrange
+from tensordict import TensorDict, tensorclass
+from torch.utils.data import DataLoader
 
+import random_neural_net_models.data as rnnm_data
+import random_neural_net_models.learner as rnnm_learner
 import random_neural_net_models.telemetry as telemetry
 import random_neural_net_models.unet as unet
 import random_neural_net_models.utils as utils
@@ -28,14 +33,14 @@ def get_noise_level_embedding(
     noise_levels_ = rearrange(noise_levels, "b -> b 1")
     exponent = rearrange(exponent, "d -> 1 d")
 
-    emb = noise_levels_.double() * exponent.exp()  # (batch_size, emb_dim//2)
+    emb = noise_levels_ * exponent.exp()  # (batch_size, emb_dim//2)
 
     emb = torch.cat([emb.sin(), emb.cos()], dim=-1)  # (batch_size, emb_dim)
 
     if emb_dim % 2 == 1:
-        return F.pad(emb, (0, 1, 0, 0))
+        return F.pad(emb, (0, 1, 0, 0)).float()
     else:
-        return emb
+        return emb.float()
 
 
 class ResBlock(nn.Module):
@@ -427,7 +432,7 @@ class UNetModel(nn.Module):
             self.n_noise_level_input,
             max_period=self.max_emb_period,
         )
-        noise_emb = self.emb_mlp(noise_emb)
+        noise_emb = self.emb_mlp(noise_emb.float())
 
         # down projections
         x = self.downs(x, noise_emb)
@@ -522,6 +527,33 @@ def apply_noise(
     return (noisy_images, sig), target_noise
 
 
+@tensorclass
+class MNISTNoisyDataTrain:
+    noisy_image: torch.Tensor
+    sig: torch.Tensor
+    target_noise: torch.Tensor
+
+
+def mnist_noisy_collate_train(
+    batch: T.List[T.Tuple[torch.Tensor, int]]
+) -> MNISTNoisyDataTrain:
+    (noisy_images, sig), target_noise = apply_noise(batch)
+
+    return MNISTNoisyDataTrain(
+        noisy_images, sig, target_noise, batch_size=[len(noisy_images)]
+    )
+
+
+class UNetModelTensordict(unet.UNetModel):
+    def forward(self, input: MNISTNoisyDataTrain) -> torch.Tensor:
+        return super().forward(input.noisy_image)
+
+
+class NoisyUNetModelTensordict(UNetModel):
+    def forward(self, input: MNISTNoisyDataTrain) -> torch.Tensor:
+        return super().forward(input.noisy_image, input.sig)
+
+
 def get_denoised_images(
     noisy_images: torch.Tensor, noises: torch.Tensor, sig: torch.Tensor
 ) -> torch.Tensor:
@@ -578,7 +610,9 @@ def compare_input_noise_and_denoised_image(
 
 
 def denoise_with_model(
-    model: telemetry.ModelTelemetry, images: torch.Tensor, sigs: torch.Tensor
+    model: T.Union[telemetry.ModelTelemetry, rnnm_learner.Learner],
+    images: torch.Tensor,
+    sigs: torch.Tensor,
 ) -> T.Tuple[T.List[torch.Tensor], T.List[torch.Tensor]]:
     "Denoises an image with the model for a range of noise levels"
     noise_preds = []
@@ -589,7 +623,22 @@ def denoise_with_model(
         c_skip, c_out, c_in = get_cs(_sigs.reshape(-1, 1, 1))
         images = images * c_in
 
-        pred_noise = model(images, _sigs)
+        if isinstance(model, telemetry.ModelTelemetry):
+            pred_noise = model(images, _sigs)
+        elif isinstance(model, rnnm_learner.Learner):
+            ds = rnnm_data.MNISTDatasetGenerate(
+                images,
+                _sigs,
+            )
+            dl = DataLoader(
+                ds,
+                batch_size=len(images),
+                shuffle=False,
+                collate_fn=rnnm_data.mnist_collate_generate,
+            )
+            pred_noise = model.predict(dl)
+        else:
+            raise ValueError(f"Unexpected type for {model=}")
 
         images = get_denoised_images(
             images, pred_noise, _sigs.reshape(-1, 1, 1)
@@ -598,3 +647,13 @@ def denoise_with_model(
         noise_preds.append(pred_noise.detach().cpu())
         denoised_preds.append(images.detach().cpu())
     return noise_preds, denoised_preds
+
+
+class MSELossMNISTNoisy(torch_loss.MSELoss):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def forward(
+        self, inference: torch.Tensor, input: MNISTNoisyDataTrain
+    ) -> torch.Tensor:
+        return super().forward(inference, input.target_noise)
