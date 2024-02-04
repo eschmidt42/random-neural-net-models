@@ -2,6 +2,7 @@ pandas
 tabulate
 pydantic
 torch
+torchvision
 numpy
 matplotlib
 seaborn
