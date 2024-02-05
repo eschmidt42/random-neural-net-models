@@ -70,6 +70,8 @@ class Learner:
         callbacks: T.List[Callback] = None,
         save_dir: Path = None,
         device: str = "cpu",
+        show_fit_progress: bool = True,
+        show_epoch_progress: bool = False,
     ):
         self.model = model
         self.optimizer = optimizer
@@ -89,6 +91,8 @@ class Learner:
         self.smooth_val = torch.tensor(0.0, device="cpu")
         self.smooth_loss = torch.tensor(torch.inf, device="cpu")
         self.losses = torch.tensor([], device="cpu").float()
+        self.show_fit_progress = show_fit_progress
+        self.show_epoch_progress = show_epoch_progress
 
     def callback(self, event: Events):
         relevant_callbacks = [
@@ -139,6 +143,7 @@ class Learner:
             enumerate(dataloader_train),
             total=len(dataloader_train),
             desc="batch (train)",
+            disable=not self.show_epoch_progress,
         ):
             self.do_batch_train(tensordict.to(self.device))
 
@@ -148,6 +153,7 @@ class Learner:
                 dataloader_valid,
                 desc="batch (valid)",
                 total=len(dataloader_valid),
+                disable=not self.show_epoch_progress,
             ):
                 losses_valid.append(
                     self.do_batch_valid(tensordict.to(self.device))
@@ -173,7 +179,10 @@ class Learner:
         self.model.to(self.device)
         self.callback(Events.before_train)
         for self.epoch in tqdm.tqdm(
-            range(n_epochs), total=n_epochs, desc="epoch"
+            range(n_epochs),
+            total=n_epochs,
+            desc="epoch",
+            disable=not self.show_fit_progress,
         ):
             try:
                 self.do_epoch(
