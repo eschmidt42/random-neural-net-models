@@ -176,7 +176,7 @@ class Rumelhart1986PytorchPerceptron(nn.Module):
         self.net = nn.Sequential(*components)
 
     def forward(
-        self, input: T.Union[rnnm_data.XyDataTrain, rnnm_data.XyDataEval]
+        self, input: T.Union[rnnm_data.XyBlock, rnnm_data.XBlock]
     ) -> torch.Tensor:
         return self.net(input.x)
 
@@ -186,6 +186,6 @@ class BCELoss(torch_loss.BCELoss):
         super().__init__(*args, **kwargs)
 
     def forward(
-        self, inference: torch.Tensor, input: rnnm_data.XyDataTrain
+        self, inference: torch.Tensor, input: rnnm_data.XyBlock
     ) -> torch.Tensor:
         return super().forward(inference, input.y)

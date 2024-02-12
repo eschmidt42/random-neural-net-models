@@ -17,13 +17,7 @@ from torchvision import transforms
 # ============================================
 
 
-@tensorclass
-class XyDataTrain:
-    x: torch.Tensor
-    y: torch.Tensor
-
-
-class TabularNumpyDatasetTrain(Dataset):
+class NumpyTrainingDataset(Dataset):
     def __init__(self, X: np.ndarray, y: np.ndarray):
         self.X = X
         self.y = y
@@ -46,20 +40,21 @@ class TabularNumpyDatasetTrain(Dataset):
         return x, y
 
 
-def tabular_numpy_collate_train(
+@tensorclass
+class XyBlock:
+    x: torch.Tensor
+    y: torch.Tensor
+
+
+def collate_numpy_dataset_to_xyblock(
     input: T.Tuple[torch.Tensor, torch.Tensor]
-) -> XyDataTrain:
+) -> XyBlock:
     x = torch.concat([v[0] for v in input]).float()
     y = torch.concat([v[1] for v in input]).float()
-    return XyDataTrain(x=x, y=y, batch_size=[x.shape[0]])
+    return XyBlock(x=x, y=y, batch_size=[x.shape[0]])
 
 
-@tensorclass
-class XyDataEval:
-    x: torch.Tensor
-
-
-class TabularNumpyDatasetEval(Dataset):
+class NumpyInferenceDataset(Dataset):
     def __init__(self, X: np.ndarray):
         self.X = X
         self.n = len(X)
@@ -73,9 +68,14 @@ class TabularNumpyDatasetEval(Dataset):
         return x
 
 
-def tabular_numpy_collate_eval(input: T.Tuple[torch.Tensor]) -> XyDataEval:
+@tensorclass
+class XBlock:
+    x: torch.Tensor
+
+
+def collate_numpy_dataset_to_xblock(input: T.Tuple[torch.Tensor]) -> XBlock:
     x = torch.concat(input).float()
-    return XyDataEval(x=x, batch_size=[x.shape[0]])
+    return XBlock(x=x, batch_size=[x.shape[0]])
 
 
 # ============================================
