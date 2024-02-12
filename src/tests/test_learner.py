@@ -18,50 +18,9 @@ from einops import rearrange
 from tensordict import tensorclass
 from torch.utils.data import DataLoader, Dataset
 
+import random_neural_net_models.data as rnnm_data
 import random_neural_net_models.learner as rnnm_learner
 import random_neural_net_models.utils as utils
-
-
-class NumpyTrainingDataset(Dataset):
-    def __init__(self, X: np.ndarray, y: np.ndarray):
-        self.X = X
-        self.y = y
-        self.n = len(X)
-        if X.shape[0] != y.shape[0]:
-            raise ValueError(
-                f"X and y must have same length, got {X.shape[0]} and {y.shape[0]}"
-            )
-        if y is not None and y.ndim > 1:
-            raise ValueError(f"y must be 1-dimensional, got {y.ndim}")
-
-    def __len__(self):
-        return self.n
-
-    def __getitem__(self, idx: int) -> T.Tuple[torch.Tensor, torch.Tensor]:
-        x = torch.from_numpy(self.X[[idx], :]).float()
-        y = torch.tensor([self.y[idx]])
-        y = rearrange(y, "n -> n 1")
-
-        return x, y
-
-
-@tensorclass
-class XyBlock:
-    x: torch.Tensor
-    y: torch.Tensor
-
-
-def collate_numpy_dataset_to_xyblock(
-    input: T.Tuple[torch.Tensor, torch.Tensor]
-) -> XyBlock:
-    x = torch.concat([v[0] for v in input]).float()
-    y = torch.concat([v[1] for v in input]).float()
-    return XyBlock(x=x, y=y, batch_size=[x.shape[0]])
-
-
-@tensorclass
-class XBlock:
-    x: torch.Tensor
 
 
 class Layer(nn.Module):
@@ -92,7 +51,9 @@ class DenseNet(nn.Module):
 
         self.net = nn.Sequential(*components)
 
-    def forward(self, input: T.Union[XyBlock, XBlock]) -> torch.Tensor:
+    def forward(
+        self, input: T.Union[rnnm_data.XyBlock, rnnm_data.XBlock]
+    ) -> torch.Tensor:
         return self.net(input.x)
 
 
@@ -100,27 +61,10 @@ class BCELoss(torch_loss.BCELoss):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def forward(self, inference: torch.Tensor, input: XyBlock) -> torch.Tensor:
+    def forward(
+        self, inference: torch.Tensor, input: rnnm_data.XyBlock
+    ) -> torch.Tensor:
         return super().forward(inference, input.y)
-
-
-class NumpyInferenceDataset(Dataset):
-    def __init__(self, X: np.ndarray):
-        self.X = X
-        self.n = len(X)
-
-    def __len__(self):
-        return self.n
-
-    def __getitem__(self, idx: int) -> torch.Tensor:
-        x = torch.from_numpy(self.X[[idx], :]).float()
-
-        return x
-
-
-def collate_numpy_dataset_to_xblock(input: T.Tuple[torch.Tensor]) -> XBlock:
-    x = torch.concat(input).float()
-    return XBlock(x=x, batch_size=[x.shape[0]])
 
 
 @pytest.mark.parametrize("use_callbacks", [True, False])
@@ -140,19 +84,19 @@ def test_learner(use_callbacks: bool):
 
     device = utils.get_device()
 
-    ds_train = NumpyTrainingDataset(X0, y0)
-    ds_val = NumpyTrainingDataset(X1, y1)
+    ds_train = rnnm_data.NumpyTrainingDataset(X0, y0)
+    ds_val = rnnm_data.NumpyTrainingDataset(X1, y1)
 
     dl_train = DataLoader(
         ds_train,
         batch_size=10,
-        collate_fn=collate_numpy_dataset_to_xyblock,
+        collate_fn=rnnm_data.collate_numpy_dataset_to_xyblock,
         shuffle=True,
     )
     dl_val = DataLoader(
         ds_val,
         batch_size=10,
-        collate_fn=collate_numpy_dataset_to_xyblock,
+        collate_fn=rnnm_data.collate_numpy_dataset_to_xyblock,
         shuffle=False,
     )
 
@@ -242,9 +186,11 @@ def test_learner(use_callbacks: bool):
     X_plot = np.array([X0.ravel(), X1.ravel()]).T
     X_plot[:4]
 
-    ds_plot = NumpyInferenceDataset(X_plot)
+    ds_plot = rnnm_data.NumpyInferenceDataset(X_plot)
     dl_plot = DataLoader(
-        ds_plot, batch_size=5, collate_fn=collate_numpy_dataset_to_xblock
+        ds_plot,
+        batch_size=5,
+        collate_fn=rnnm_data.collate_numpy_dataset_to_xblock,
     )
 
     y_prob = learner.predict(dl_plot)
