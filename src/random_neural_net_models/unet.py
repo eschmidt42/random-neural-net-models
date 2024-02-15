@@ -374,5 +374,5 @@ class UNetModel(nn.Module):
 
 
 class UNetModel2(UNetModel):
-    def forward(self, input: rnnm_data.MNISTDataTrain) -> torch.Tensor:
+    def forward(self, input: rnnm_data.MNISTBlockWithLabels) -> torch.Tensor:
         return super().forward(input.image)

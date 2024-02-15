@@ -83,13 +83,7 @@ def collate_numpy_dataset_to_xblock(input: T.Tuple[torch.Tensor]) -> XBlock:
 # ============================================
 
 
-@tensorclass
-class MNISTDataTrain:
-    image: torch.Tensor
-    label: torch.Tensor
-
-
-class MNISTDatasetTrain(Dataset):
+class MNISTDatasetWithLabels(Dataset):
     def __init__(
         self,
         X: pd.DataFrame,
@@ -139,22 +133,28 @@ class MNISTDatasetTrain(Dataset):
             label[label == 0] = -1  # True = 1, False = -1
             label = label.float()
         else:
-            label = torch.tensor(label, dtype=torch.int64)
+            label = label.type(torch.int64)
 
         return img, label
 
 
-def mnist_collate_train(
+@tensorclass
+class MNISTBlockWithLabels:
+    image: torch.Tensor
+    label: torch.Tensor
+
+
+def collate_mnist_dataset_to_block_with_labels(
     input: T.List[T.Tuple[torch.Tensor, torch.Tensor]]
-) -> MNISTDataTrain:
+) -> MNISTBlockWithLabels:
     images = torch.concat([v[0] for v in input])  # .float()
     labels = torch.concat([v[1] for v in input])  # .float()
-    return MNISTDataTrain(
+    return MNISTBlockWithLabels(
         image=images, label=labels, batch_size=[images.shape[0]]
     )
 
 
-class MNISTDatasetGenerate(Dataset):
+class MNISTDatasetWithNoise(Dataset):
     # to generate images from noise
     def __init__(
         self,
@@ -202,17 +202,17 @@ class MNISTDatasetGenerate(Dataset):
 
 
 @tensorclass
-class MNISTNoisyDataGenerate:
+class MNISTBlockWithNoise:
     noisy_image: torch.Tensor
     sig: torch.Tensor
 
 
-def mnist_collate_generate(
+def collate_mnist_dataset_to_block_with_noise(
     input: T.List[T.Tuple[torch.Tensor, torch.Tensor]]
-) -> MNISTNoisyDataGenerate:
+) -> MNISTBlockWithNoise:
     images = torch.concat([v[0] for v in input])  # .float()
     sigs = torch.concat([v[1] for v in input])  # .float()
 
-    return MNISTNoisyDataGenerate(
+    return MNISTBlockWithNoise(
         noisy_image=images, sig=sigs, batch_size=[images.shape[0]]
     )

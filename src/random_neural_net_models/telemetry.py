@@ -358,14 +358,6 @@ class ModelTelemetry(nn.Module):
         super().__init__()
         self.model = model
 
-        # activations bit
-        self.activations_history = ActivationsHistory(
-            self.model,
-            every_n=activations_every_n,
-            name_patterns=activations_name_patterns,
-            max_depth_search=max_depth_search,
-        )
-
         # loss bit
         self.loss_history_train = LossHistory(
             loss_train_every_n, names=loss_names
@@ -374,21 +366,32 @@ class ModelTelemetry(nn.Module):
             loss_test_every_n, names=loss_names
         )
 
+        # activations bit
+        if activations_name_patterns is not None:
+            self.activations_history = ActivationsHistory(
+                self.model,
+                every_n=activations_every_n,
+                name_patterns=activations_name_patterns,
+                max_depth_search=max_depth_search,
+            )
+
         # parameter bit
-        self.parameter_history = ParametersHistory(
-            self.model,
-            every_n=parameters_every_n,
-            name_patterns=parameters_name_patterns,
-            max_depth_search=max_depth_search,
-        )
+        if parameters_name_patterns is not None:
+            self.parameter_history = ParametersHistory(
+                self.model,
+                every_n=parameters_every_n,
+                name_patterns=parameters_name_patterns,
+                max_depth_search=max_depth_search,
+            )
 
         # gradient bit
-        self.gradients_history = GradientsHistory(
-            self.model,
-            every_n=gradients_every_n,
-            name_patterns=gradients_name_patterns,
-            max_depth_search=max_depth_search,
-        )
+        if gradients_name_patterns is not None:
+            self.gradients_history = GradientsHistory(
+                self.model,
+                every_n=gradients_every_n,
+                name_patterns=gradients_name_patterns,
+                max_depth_search=max_depth_search,
+            )
 
     @property
     def name_matches_activations(self):

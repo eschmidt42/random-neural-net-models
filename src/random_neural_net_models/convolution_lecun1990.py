@@ -225,5 +225,5 @@ class Model(nn.Module):
 
 
 class Model2(Model):
-    def forward(self, input: rnnm_data.MNISTDataTrain):
+    def forward(self, input: rnnm_data.MNISTBlockWithLabels):
         return self.net(input.image)

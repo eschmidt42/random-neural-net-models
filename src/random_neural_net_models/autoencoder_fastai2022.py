@@ -234,5 +234,5 @@ class CNNAutoEncoder(nn.Module):
 
 
 class CNNAutoEncoder2(CNNAutoEncoder):
-    def forward(self, input: rnnm_data.MNISTDataTrain):
+    def forward(self, input: rnnm_data.MNISTBlockWithLabels):
         return super().forward(input.image)

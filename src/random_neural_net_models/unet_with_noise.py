@@ -626,7 +626,7 @@ def denoise_with_model(
         if isinstance(model, telemetry.ModelTelemetry):
             pred_noise = model(images, _sigs)
         elif isinstance(model, rnnm_learner.Learner):
-            ds = rnnm_data.MNISTDatasetGenerate(
+            ds = rnnm_data.MNISTDatasetWithNoise(
                 images,
                 _sigs,
             )
@@ -634,7 +634,7 @@ def denoise_with_model(
                 ds,
                 batch_size=len(images),
                 shuffle=False,
-                collate_fn=rnnm_data.mnist_collate_generate,
+                collate_fn=rnnm_data.collate_mnist_dataset_to_block_with_noise,
             )
             pred_noise = model.predict(dl)
         else:

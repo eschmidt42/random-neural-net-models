@@ -25,8 +25,18 @@ import random_neural_net_models.utils as utils
 logger = utils.get_logger("learner.py")
 
 
+class CallbackEnum(Enum):
+    train_loss = "train_loss"
+    train_activations = "train_activations"
+    train_gradients = "train_gradients"
+    train_parameters = "train_parameters"
+    lr_finder = "lr_finder"
+    every_batch_scheduler = "every_batch_scheduler"
+    early_stopping = "early_stopping"
+
+
 class Callback:
-    ...
+    enum: CallbackEnum
 
 
 class CancelFitException(Exception):
@@ -76,10 +86,7 @@ class Learner:
         self.model = model
         self.optimizer = optimizer
         self.loss_func = loss_func
-        if callbacks is None:
-            self.registered_callbacks = []
-        else:
-            self.registered_callbacks = callbacks
+        self.register_callbacks(callbacks)
 
         self.save_dir = (
             save_dir.resolve().absolute() if save_dir is not None else None
@@ -94,11 +101,29 @@ class Learner:
         self.show_fit_progress = show_fit_progress
         self.show_epoch_progress = show_epoch_progress
 
+    def register_callbacks(self, callbacks: T.List[Callback]):
+        if callbacks is None:
+            self.registered_callbacks = {}
+        else:
+            self.registered_callbacks = {cb.enum: cb for cb in callbacks}
+
+    def update_callback(self, callback: Callback):
+        if not hasattr(self, "registered_callbacks"):
+            raise ValueError("'registered_callbacks' is not initialized yet")
+        if callback.enum in self.registered_callbacks:
+            logger.warning(
+                f"overwriting previously registered callback {self.registered_callbacks[callback.enum]} with {callback}"
+            )
+        else:
+            logger.info(f"adding {callback} to registered callbacks")
+
+        self.registered_callbacks[callback.enum] = callback
+
     def callback(self, event: Events):
         relevant_callbacks = [
-            c
-            for c in self.registered_callbacks
-            if isinstance(c, Callback) and hasattr(c, event.value)
+            cb
+            for cb in self.registered_callbacks.values()
+            if isinstance(cb, Callback) and hasattr(cb, event.value)
         ]
         for callback in relevant_callbacks:
             getattr(callback, event.value)(self)
@@ -174,7 +199,7 @@ class Learner:
                 f"replacing {self.registered_callbacks=} with {callbacks=}"
             )
             registered_callbacks = self.registered_callbacks
-            self.registered_callbacks = callbacks
+            self.register_callbacks(callbacks)
 
         self.model.to(self.device)
         self.callback(Events.before_train)
@@ -269,6 +294,7 @@ class Loss:
 
 
 class TrainLossCallback(Callback):
+    enum = CallbackEnum.train_loss
     losses: T.List[Loss]
 
     def __init__(self):
@@ -334,6 +360,7 @@ class TrainLossCallback(Callback):
 
 
 class TrainActivationsCallback(Callback):
+    enum = CallbackEnum.train_activations
     activations_history: rnnm_telemetry.ActivationsHistory
     every_n: int
     name_patterns: T.List[str]
@@ -391,6 +418,7 @@ class TrainActivationsCallback(Callback):
 
 
 class TrainGradientsCallback(Callback):
+    enum = CallbackEnum.train_gradients
     gradients_history: rnnm_telemetry.GradientsHistory
     every_n: int
     name_patterns: T.List[str]
@@ -451,6 +479,7 @@ class TrainGradientsCallback(Callback):
 
 
 class TrainParametersCallback(Callback):
+    enum = CallbackEnum.train_parameters
     parameters_history: rnnm_telemetry.ParametersHistory
     every_n: int
     name_patterns: T.List[str]
@@ -519,6 +548,7 @@ class LossWithLR:
 
 
 class LRFinderCallback(Callback):
+    enum = CallbackEnum.lr_finder
     losses: T.List[LossWithLR]
 
     def __init__(
@@ -593,6 +623,8 @@ class LRFinderCallback(Callback):
 
 
 class EveryBatchSchedulerCallback(Callback):
+    enum = CallbackEnum.every_batch_scheduler
+
     def __init__(self, scheduler: optim.lr_scheduler.LRScheduler):
         self.scheduler = scheduler
 
@@ -601,6 +633,8 @@ class EveryBatchSchedulerCallback(Callback):
 
 
 class EarlyStoppingCallback(Callback):
+    enum = CallbackEnum.early_stopping
+
     def __init__(self, patience: int):
         self.patience = patience
         self.n_epochs_worse = 0
@@ -618,3 +652,15 @@ class EarlyStoppingCallback(Callback):
         else:
             self.best_loss = learner.loss_valid
             self.n_epochs_worse = 0
+
+
+def set_optimizer_hyperparameter(optimizer: optim.Optimizer, **hyper_params):
+    # https://stackoverflow.com/questions/48324152/how-to-change-the-learning-rate-of-an-optimizer-at-any-given-moment-no-lr-sched
+
+    for g in optimizer.param_groups:
+        for param_name, param_value in hyper_params.items():
+            if param_name not in g:
+                raise ValueError(
+                    f"was passed {hyper_params=} but did not find '{param_name}' in the parameter group {g=}. Maybe there is a typo in your hyperparameter name?"
+                )
+            g[param_name] = param_value

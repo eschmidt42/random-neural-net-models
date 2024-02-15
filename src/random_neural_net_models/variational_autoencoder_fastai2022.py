@@ -210,14 +210,14 @@ class CNNDenseVariationalAutoEncoder(nn.Module):
 
 class CNNDenseVariationalAutoEncoder2(CNNDenseVariationalAutoEncoder):
     def forward(
-        self, input: rnnm_data.MNISTDataTrain
+        self, input: rnnm_data.MNISTBlockWithLabels
     ) -> T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         return super().forward(input.image)
 
 
 class DenseVariationalAutoEncoder2(DenseVariationalAutoEncoder):
     def forward(
-        self, input: rnnm_data.MNISTDataTrain
+        self, input: rnnm_data.MNISTBlockWithLabels
     ) -> T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         return super().forward(input.image)
 
@@ -279,7 +279,7 @@ class VAELossMNIST(torch_loss._Loss):
     def forward(
         self,
         inference: T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor],
-        input: rnnm_data.MNISTDataTrain,
+        input: rnnm_data.MNISTBlockWithLabels,
     ) -> torch.Tensor:
         reconstruction_loss = calc_reconstruction_loss(
             inference, input.image, is_sigmoid=False

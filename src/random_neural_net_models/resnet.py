@@ -85,5 +85,5 @@ class ResNet(nn.Module):
 
 
 class ResNet2(ResNet):
-    def forward(self, input: rnnm_data.MNISTDataTrain) -> torch.Tensor:
+    def forward(self, input: rnnm_data.MNISTBlockWithLabels) -> torch.Tensor:
         return self.net(input.image)

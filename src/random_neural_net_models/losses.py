@@ -10,7 +10,7 @@ class MSELossMNIST1HotLabel(torch_loss.MSELoss):
         super().__init__(*args, **kwargs)
 
     def forward(
-        self, inference: torch.Tensor, input: rnnm_data.MNISTDataTrain
+        self, inference: torch.Tensor, input: rnnm_data.MNISTBlockWithLabels
     ) -> torch.Tensor:
         return super().forward(inference, input.label)
 
@@ -20,7 +20,7 @@ class MSELossMNISTAutoencoder(torch_loss.MSELoss):
         super().__init__(*args, **kwargs)
 
     def forward(
-        self, inference: torch.Tensor, input: rnnm_data.MNISTDataTrain
+        self, inference: torch.Tensor, input: rnnm_data.MNISTBlockWithLabels
     ) -> torch.Tensor:
         return super().forward(inference, input.image)
 
@@ -30,6 +30,6 @@ class CrossEntropyMNIST(torch_loss.CrossEntropyLoss):
         super().__init__(*args, **kwargs)
 
     def forward(
-        self, inference: torch.Tensor, input: rnnm_data.MNISTDataTrain
+        self, inference: torch.Tensor, input: rnnm_data.MNISTBlockWithLabels
     ) -> torch.Tensor:
         return super().forward(inference, input.label)
