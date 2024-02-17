@@ -204,15 +204,17 @@ class MNISTDatasetWithNoise(Dataset):
 @tensorclass
 class MNISTBlockWithNoise:
     noisy_image: torch.Tensor
-    sig: torch.Tensor
+    noise_level: torch.Tensor
 
 
 def collate_mnist_dataset_to_block_with_noise(
     input: T.List[T.Tuple[torch.Tensor, torch.Tensor]]
 ) -> MNISTBlockWithNoise:
     images = torch.concat([v[0] for v in input])  # .float()
-    sigs = torch.concat([v[1] for v in input])  # .float()
+    noise_levels = torch.concat([v[1] for v in input])  # .float()
 
     return MNISTBlockWithNoise(
-        noisy_image=images, sig=sigs, batch_size=[images.shape[0]]
+        noisy_image=images,
+        noise_level=noise_levels,
+        batch_size=[images.shape[0]],
     )

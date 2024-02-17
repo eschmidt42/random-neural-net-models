@@ -464,25 +464,25 @@ SIG_DATA = 0.66
 
 
 def get_cs(
-    sig: torch.Tensor,
+    noise_level: torch.Tensor,
 ) -> T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     # TODO: wtf is happening here?
-    totvar = sig**2 + SIG_DATA**2
+    totvar = noise_level**2 + SIG_DATA**2
     c_skip = SIG_DATA**2 / totvar
-    c_out = sig * SIG_DATA / totvar.sqrt()
+    c_out = noise_level * SIG_DATA / totvar.sqrt()
     c_in = 1 / totvar.sqrt()
     return c_skip, c_out, c_in
 
 
-def draw_sig_from_noise_prior(n: int) -> torch.Tensor:
+def draw_noise_level_from_noise_prior(n: int) -> torch.Tensor:
     "Draws noise level (prior) from a log normal distribution"
-    sig = torch.randn(n)
-    sig = 1.2 * sig - 1.2
-    sig = sig.exp()
-    return sig
+    noise_level = torch.randn(n)
+    noise_level = 1.2 * noise_level - 1.2
+    noise_level = noise_level.exp()
+    return noise_level
 
 
-def draw_img_noise_given_sig(
+def draw_img_noise_given_noise_level(
     sig: torch.Tensor,
     images: torch.Tensor = None,
     images_shape: T.Tuple[int, int, int] = None,
@@ -491,9 +491,9 @@ def draw_img_noise_given_sig(
     if images is not None:
         images_shape = images.shape
 
-    noise = torch.randn(images_shape)
-    noise = noise * sig
-    return noise
+    img_noise = torch.randn(images_shape)
+    img_noise = img_noise * sig
+    return img_noise
 
 
 def fudge_original_images(images: torch.Tensor) -> torch.Tensor:
@@ -510,37 +510,37 @@ def apply_noise(
     orig_images = fudge_original_images(orig_images)
 
     # drawing noise level (prior) from a log normal distribution
-    sig = draw_sig_from_noise_prior(orig_images.shape[0])
-    sig = sig.reshape(-1, 1, 1)
+    noise_level = draw_noise_level_from_noise_prior(orig_images.shape[0])
+    noise_level = noise_level.reshape(-1, 1, 1)
 
-    c_skip, c_out, c_in = get_cs(sig)
+    c_skip, c_out, c_in = get_cs(noise_level)
 
     # adding noise to the image
-    noise = draw_img_noise_given_sig(sig, images=orig_images)
+    noise = draw_img_noise_given_noise_level(noise_level, images=orig_images)
     noisy_images = orig_images + noise
 
     target_noise = (orig_images - c_skip * noisy_images) / c_out
     noisy_images = noisy_images * c_in
 
-    sig = sig.squeeze()
+    noise_level = noise_level.squeeze()
 
-    return (noisy_images, sig), target_noise
+    return (noisy_images, noise_level), target_noise
 
 
 @tensorclass
 class MNISTNoisyDataTrain:
     noisy_image: torch.Tensor
-    sig: torch.Tensor
+    noise_level: torch.Tensor
     target_noise: torch.Tensor
 
 
 def mnist_noisy_collate_train(
     batch: T.List[T.Tuple[torch.Tensor, int]]
 ) -> MNISTNoisyDataTrain:
-    (noisy_images, sig), target_noise = apply_noise(batch)
+    (noisy_images, noise_level), target_noise = apply_noise(batch)
 
     return MNISTNoisyDataTrain(
-        noisy_images, sig, target_noise, batch_size=[len(noisy_images)]
+        noisy_images, noise_level, target_noise, batch_size=[len(noisy_images)]
     )
 
 
@@ -551,14 +551,14 @@ class UNetModelTensordict(unet.UNetModel):
 
 class NoisyUNetModelTensordict(UNetModel):
     def forward(self, input: MNISTNoisyDataTrain) -> torch.Tensor:
-        return super().forward(input.noisy_image, input.sig)
+        return super().forward(input.noisy_image, input.noise_level)
 
 
 def get_denoised_images(
-    noisy_images: torch.Tensor, noises: torch.Tensor, sig: torch.Tensor
+    noisy_images: torch.Tensor, noises: torch.Tensor, noise_level: torch.Tensor
 ) -> torch.Tensor:
     "Returns the de-noised images given the noisy images, noise and the noise level (sig)"
-    c_skip, c_out, c_in = get_cs(sig)
+    c_skip, c_out, c_in = get_cs(noise_level)
     denoised_images = noises * c_out + (noisy_images / c_in) * c_skip
     return denoised_images
 
@@ -612,23 +612,25 @@ def compare_input_noise_and_denoised_image(
 def denoise_with_model(
     model: T.Union[telemetry.ModelTelemetry, rnnm_learner.Learner],
     images: torch.Tensor,
-    sigs: torch.Tensor,
+    noise_levels: torch.Tensor,
 ) -> T.Tuple[T.List[torch.Tensor], T.List[torch.Tensor]]:
     "Denoises an image with the model for a range of noise levels"
     noise_preds = []
     denoised_preds = []
-    for sig in tqdm.tqdm(sigs, total=len(sigs), desc="Sigmas"):
-        _sigs = sig.repeat(images.shape[0])
+    for noise_level in tqdm.tqdm(
+        noise_levels, total=len(noise_levels), desc="Sigmas"
+    ):
+        levels = noise_level.repeat(images.shape[0])
 
-        c_skip, c_out, c_in = get_cs(_sigs.reshape(-1, 1, 1))
+        c_skip, c_out, c_in = get_cs(levels.reshape(-1, 1, 1))
         images = images * c_in
 
         if isinstance(model, telemetry.ModelTelemetry):
-            pred_noise = model(images, _sigs)
+            pred_noise = model(images, levels)
         elif isinstance(model, rnnm_learner.Learner):
             ds = rnnm_data.MNISTDatasetWithNoise(
                 images,
-                _sigs,
+                levels,
             )
             dl = DataLoader(
                 ds,
@@ -641,7 +643,7 @@ def denoise_with_model(
             raise ValueError(f"Unexpected type for {model=}")
 
         images = get_denoised_images(
-            images, pred_noise, _sigs.reshape(-1, 1, 1)
+            images, pred_noise, levels.reshape(-1, 1, 1)
         )
 
         noise_preds.append(pred_noise.detach().cpu())
