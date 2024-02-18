@@ -13,3 +13,4 @@ einops
 transformers
 wandb
 tensordict
+diffusers[torch]

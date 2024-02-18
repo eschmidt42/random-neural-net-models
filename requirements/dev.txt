@@ -4,38 +4,40 @@
 #
 #    pip-compile --output-file=requirements/dev.txt requirements/dev.in
 #
-anyio==4.0.0
-    # via jupyter-server
+anyio==4.2.0
+    # via
+    #   httpx
+    #   jupyter-server
 argon2-cffi==23.1.0
     # via jupyter-server
 argon2-cffi-bindings==21.2.0
     # via argon2-cffi
 arrow==1.3.0
     # via isoduration
-asttokens==2.4.0
+asttokens==2.4.1
     # via stack-data
 async-lru==2.0.4
     # via jupyterlab
-attrs==23.1.0
+attrs==23.2.0
     # via
     #   jsonschema
     #   referencing
-babel==2.13.0
+babel==2.14.0
     # via jupyterlab-server
-backcall==0.2.0
-    # via ipython
-beautifulsoup4==4.12.2
+beautifulsoup4==4.12.3
     # via nbconvert
-black==23.9.1
+black==24.2.0
     # via -r requirements/dev.in
 bleach==6.1.0
     # via nbconvert
-bumpver==2023.1127
+bumpver==2023.1129
     # via -r requirements/dev.in
-certifi==2023.11.17
+certifi==2024.2.2
     # via
     #   -c requirements/core.txt
     #   -c requirements/publish.txt
+    #   httpcore
+    #   httpx
     #   requests
 cffi==1.16.0
     # via
@@ -55,54 +57,61 @@ click==8.1.7
     #   bumpver
 colorama==0.4.6
     # via bumpver
-comm==0.1.4
+comm==0.2.1
     # via
     #   ipykernel
     #   ipywidgets
-debugpy==1.8.0
+debugpy==1.8.1
     # via ipykernel
 decorator==5.1.1
     # via ipython
 defusedxml==0.7.1
     # via nbconvert
-distlib==0.3.7
+distlib==0.3.8
     # via virtualenv
-executing==2.0.0
+executing==2.0.1
     # via stack-data
-fastjsonschema==2.18.1
+fastjsonschema==2.19.1
     # via nbformat
-filelock==3.12.4
+filelock==3.13.1
     # via
     #   -c requirements/core.txt
     #   virtualenv
 fqdn==1.5.1
     # via jsonschema
-identify==2.5.30
+h11==0.14.0
+    # via httpcore
+httpcore==1.0.3
+    # via httpx
+httpx==0.26.0
+    # via jupyterlab
+identify==2.5.34
     # via pre-commit
 idna==3.6
     # via
     #   -c requirements/core.txt
     #   -c requirements/publish.txt
     #   anyio
+    #   httpx
     #   jsonschema
     #   requests
-ipykernel==6.25.2
+ipykernel==6.29.2
     # via jupyterlab
-ipython==8.16.1
+ipython==8.21.0
     # via
     #   ipykernel
     #   ipywidgets
 ipython-genutils==0.2.0
     # via jupyter-contrib-nbextensions
-ipywidgets==8.1.1
+ipywidgets==8.1.2
     # via -r requirements/dev.in
 isoduration==20.11.0
     # via jsonschema
-isort==5.12.0
+isort==5.13.2
     # via -r requirements/dev.in
 jedi==0.19.1
     # via ipython
-jinja2==3.1.2
+jinja2==3.1.3
     # via
     #   -c requirements/core.txt
     #   jupyter-server
@@ -113,14 +122,14 @@ json5==0.9.14
     # via jupyterlab-server
 jsonpointer==2.4
     # via jsonschema
-jsonschema[format-nongpl]==4.19.1
+jsonschema[format-nongpl]==4.21.1
     # via
     #   jupyter-events
     #   jupyterlab-server
     #   nbformat
-jsonschema-specifications==2023.7.1
+jsonschema-specifications==2023.12.1
     # via jsonschema
-jupyter-client==8.3.1
+jupyter-client==8.6.0
     # via
     #   ipykernel
     #   jupyter-server
@@ -131,7 +140,7 @@ jupyter-contrib-core==0.4.2
     #   jupyter-nbextensions-configurator
 jupyter-contrib-nbextensions==0.7.0
     # via -r requirements/dev.in
-jupyter-core==5.3.2
+jupyter-core==5.7.1
     # via
     #   ipykernel
     #   jupyter-client
@@ -143,44 +152,44 @@ jupyter-core==5.3.2
     #   nbclient
     #   nbconvert
     #   nbformat
-jupyter-events==0.7.0
+jupyter-events==0.9.0
     # via jupyter-server
 jupyter-highlight-selected-word==0.2.0
     # via jupyter-contrib-nbextensions
-jupyter-lsp==2.2.0
+jupyter-lsp==2.2.2
     # via jupyterlab
 jupyter-nbextensions-configurator==0.6.3
     # via jupyter-contrib-nbextensions
-jupyter-server==2.7.3
+jupyter-server==2.12.5
     # via
     #   jupyter-lsp
     #   jupyterlab
     #   jupyterlab-server
     #   notebook
     #   notebook-shim
-jupyter-server-terminals==0.4.4
+jupyter-server-terminals==0.5.2
     # via jupyter-server
-jupyterlab==4.0.6
+jupyterlab==4.1.1
     # via
     #   -r requirements/dev.in
     #   notebook
-jupyterlab-pygments==0.2.2
+jupyterlab-pygments==0.3.0
     # via nbconvert
-jupyterlab-server==2.25.0
+jupyterlab-server==2.25.3
     # via
     #   jupyterlab
     #   notebook
-jupyterlab-widgets==3.0.9
+jupyterlab-widgets==3.0.10
     # via ipywidgets
 lexid==2021.1006
     # via bumpver
-line-profiler==4.1.1
+line-profiler==4.1.2
     # via -r requirements/dev.in
 looseversion==1.3.0
     # via bumpver
-lxml==4.9.3
+lxml==5.1.0
     # via jupyter-contrib-nbextensions
-markupsafe==2.1.3
+markupsafe==2.1.5
     # via
     #   -c requirements/core.txt
     #   jinja2
@@ -193,9 +202,9 @@ mistune==3.0.2
     # via nbconvert
 mypy-extensions==1.0.0
     # via black
-nbclient==0.8.0
+nbclient==0.9.0
     # via nbconvert
-nbconvert==7.9.2
+nbconvert==7.16.0
     # via
     #   jupyter-contrib-nbextensions
     #   jupyter-server
@@ -204,20 +213,20 @@ nbformat==5.9.2
     #   jupyter-server
     #   nbclient
     #   nbconvert
-nest-asyncio==1.5.8
+nest-asyncio==1.6.0
     # via ipykernel
 nodeenv==1.8.0
     # via pre-commit
-notebook==7.0.4
+notebook==7.1.0
     # via
     #   jupyter-contrib-core
     #   jupyter-contrib-nbextensions
     #   jupyter-nbextensions-configurator
-notebook-shim==0.2.3
+notebook-shim==0.2.4
     # via
     #   jupyterlab
     #   notebook
-overrides==7.4.0
+overrides==7.7.0
     # via jupyter-server
 packaging==23.2
     # via
@@ -230,26 +239,24 @@ packaging==23.2
     #   jupyterlab
     #   jupyterlab-server
     #   nbconvert
-pandocfilters==1.5.0
+pandocfilters==1.5.1
     # via nbconvert
 parso==0.8.3
     # via jedi
-pathspec==0.11.2
+pathspec==0.12.1
     # via black
-pexpect==4.8.0
+pexpect==4.9.0
     # via ipython
-pickleshare==0.7.5
-    # via ipython
-platformdirs==3.11.0
+platformdirs==4.2.0
     # via
     #   black
     #   jupyter-core
     #   virtualenv
-pre-commit==3.4.0
+pre-commit==3.6.1
     # via -r requirements/dev.in
-prometheus-client==0.17.1
+prometheus-client==0.20.0
     # via jupyter-server
-prompt-toolkit==3.0.39
+prompt-toolkit==3.0.43
     # via ipython
 psutil==5.9.8
     # via
@@ -265,7 +272,7 @@ pycparser==2.21
     # via
     #   -c requirements/publish.txt
     #   cffi
-pygments==2.16.1
+pygments==2.17.2
     # via
     #   -c requirements/core.txt
     #   -c requirements/publish.txt
@@ -284,12 +291,12 @@ pyyaml==6.0.1
     #   jupyter-events
     #   jupyter-nbextensions-configurator
     #   pre-commit
-pyzmq==25.1.1
+pyzmq==25.1.2
     # via
     #   ipykernel
     #   jupyter-client
     #   jupyter-server
-referencing==0.30.2
+referencing==0.33.0
     # via
     #   jsonschema
     #   jsonschema-specifications
@@ -307,7 +314,7 @@ rfc3986-validator==0.1.1
     # via
     #   jsonschema
     #   jupyter-events
-rpds-py==0.10.4
+rpds-py==0.18.0
     # via
     #   jsonschema
     #   referencing
@@ -321,12 +328,14 @@ six==1.16.0
     #   python-dateutil
     #   rfc3339-validator
 sniffio==1.3.0
-    # via anyio
+    # via
+    #   anyio
+    #   httpx
 soupsieve==2.5
     # via beautifulsoup4
 stack-data==0.6.3
     # via ipython
-terminado==0.17.1
+terminado==0.18.0
     # via
     #   jupyter-server
     #   jupyter-server-terminals
@@ -336,7 +345,7 @@ toml==0.10.2
     # via bumpver
 torchinfo==1.8.0
     # via -r requirements/dev.in
-tornado==6.3.3
+tornado==6.4
     # via
     #   ipykernel
     #   jupyter-client
@@ -347,7 +356,7 @@ tornado==6.3.3
     #   jupyterlab
     #   notebook
     #   terminado
-traitlets==5.11.2
+traitlets==5.14.1
     # via
     #   comm
     #   ipykernel
@@ -365,18 +374,18 @@ traitlets==5.11.2
     #   nbclient
     #   nbconvert
     #   nbformat
-types-python-dateutil==2.8.19.14
+types-python-dateutil==2.8.19.20240106
     # via arrow
 uri-template==1.3.0
     # via jsonschema
-urllib3==2.1.0
+urllib3==2.2.1
     # via
     #   -c requirements/core.txt
     #   -c requirements/publish.txt
     #   requests
-virtualenv==20.24.5
+virtualenv==20.25.0
     # via pre-commit
-wcwidth==0.2.8
+wcwidth==0.2.13
     # via prompt-toolkit
 webcolors==1.13
     # via jsonschema
@@ -384,9 +393,9 @@ webencodings==0.5.1
     # via
     #   bleach
     #   tinycss2
-websocket-client==1.6.4
+websocket-client==1.7.0
     # via jupyter-server
-widgetsnbextension==4.0.9
+widgetsnbextension==4.0.10
     # via ipywidgets
 
 # The following packages are considered to be unsafe in a requirements file:
