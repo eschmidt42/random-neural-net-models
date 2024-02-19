@@ -194,7 +194,7 @@ class UNetDown(nn.Module):
             x = down_block(x, t)
         return x
 
-    def __iter__(self) -> torch.Tensor:
+    def __iter__(self) -> T.Iterator[torch.Tensor]:
         for down_block in self.down_blocks:
             yield down_block.saved_output
 
