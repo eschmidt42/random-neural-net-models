@@ -39,8 +39,7 @@ class Callback:
     enum: CallbackEnum
 
 
-class CancelFitException(Exception):
-    ...
+class CancelFitException(Exception): ...
 
 
 class Events(Enum):
@@ -237,22 +236,32 @@ class Learner:
 
     @torch.no_grad()
     def predict(
-        self, dataloader: DataLoader, component: int = None
+        self,
+        dataloader: DataLoader,
+        component: int = None,
+        return_inputs: bool = False,
     ) -> torch.Tensor:
         self.model.eval()
         self.model.to(self.device)
         inference = []
+        inputs = []
         for tensordict in tqdm.tqdm(
             dataloader, total=len(dataloader), desc="batch"
         ):
             inference.append(self.model(tensordict.to(self.device)))
+            if return_inputs:
+                inputs.append(tensordict)
 
         if isinstance(component, int):
             logger.info(
                 f"only using {component=} of each model output (e.g. for VAE only the image)"
             )
             inference = [v[component] for v in inference]
-        return torch.concat(inference).cpu()
+
+        inference = torch.concat(inference).cpu()
+        if return_inputs:
+            return inference, torch.cat(inputs)
+        return inference
 
     def save(self):
         if self.save_dir is None:
