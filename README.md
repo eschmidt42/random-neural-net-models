@@ -33,7 +33,9 @@ See jupyter notebooks in [`nbs/`](https://github.com/eschmidt42/random-neural-ne
     * cnn+dense: `cnn_variational_autoencoder_fastai2022.ipynb`
 * optimizers: `stochastic_optimization_methods.ipynb`
 * resnet: `resnet_fastai2022.ipynb`
-* unet: `unet_fastai2022.ipynb`
+* unet:
+    * `unet_fastai2022.ipynb`
+    * `unet-isbi2012`
 * diffusion (unet + noise): `diffusion_fastai2022.ipynb`
 * [mingpt](https://github.com/karpathy/minGPT):
     * `mingpt_sort.ipynb`
