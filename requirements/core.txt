@@ -166,6 +166,7 @@ pyyaml==6.0.1
     #   wandb
 regex==2023.12.25
     # via
+    #   -r requirements/core.in
     #   diffusers
     #   transformers
 requests==2.31.0
