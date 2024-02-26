@@ -163,20 +163,34 @@ class Learner:
     def do_epoch(
         self, dataloader_train: DataLoader, dataloader_valid: DataLoader = None
     ):
-        for self.batch, tensordict in tqdm.tqdm(
-            enumerate(dataloader_train),
-            total=len(dataloader_train),
+        self.batch = 0
+        total = (
+            None
+            if not hasattr(dataloader_train.dataset, "__len__")
+            else len(dataloader_train)
+        )
+
+        for tensordict in tqdm.tqdm(
+            dataloader_train,
+            total=total,
             desc="batch (train)",
             disable=not self.show_epoch_progress,
         ):
             self.do_batch_train(tensordict.to(self.device))
+            self.batch += 1
 
         if dataloader_valid is not None:
+            total = (
+                None
+                if not hasattr(dataloader_valid.dataset, "__len__")
+                else len(dataloader_valid)
+            )
+
             losses_valid = []
             for tensordict in tqdm.tqdm(
                 dataloader_valid,
                 desc="batch (valid)",
-                total=len(dataloader_valid),
+                total=total,
                 disable=not self.show_epoch_progress,
             ):
                 losses_valid.append(
@@ -245,9 +259,12 @@ class Learner:
         self.model.to(self.device)
         inference = []
         inputs = []
-        for tensordict in tqdm.tqdm(
-            dataloader, total=len(dataloader), desc="batch"
-        ):
+        total = (
+            None
+            if not hasattr(dataloader.dataset, "__len__")
+            else len(dataloader)
+        )
+        for tensordict in tqdm.tqdm(dataloader, total=total, desc="batch"):
             inference.append(self.model(tensordict.to(self.device)))
             if return_inputs:
                 inputs.append(tensordict)
@@ -330,7 +347,9 @@ class TrainLossCallback(Callback):
     def get_losses_valid(self) -> pd.DataFrame:
         return self.get_losses().loc[self.get_losses()["loss_valid"].notna(), :]
 
-    def plot(self, window: int = 10, yscale: float = "linear"):
+    def plot(
+        self, window: int = 10, window_valid: int = 5, yscale: float = "linear"
+    ):
         fig, ax = plt.subplots(figsize=(10, 4))
         losses = self.get_losses()
         sns.scatterplot(
@@ -339,7 +358,8 @@ class TrainLossCallback(Callback):
             y="loss",
             ax=ax,
             label="train",
-            alpha=0.1,
+            alpha=0.4,
+            s=5,
         )
         losses["loss_rolling"] = losses.rolling(window=window)["loss"].mean()
         sns.lineplot(
@@ -354,13 +374,27 @@ class TrainLossCallback(Callback):
 
         losses_valid = self.get_losses_valid()
         if len(losses_valid) > 0:
-            sns.lineplot(
+            losses_valid["loss_rolling"] = losses_valid.rolling(
+                window=window_valid
+            )["loss_valid"].mean()
+            sns.scatterplot(
                 data=losses_valid,
                 x="iteration",
                 y="loss_valid",
                 ax=ax,
                 label="valid",
                 color="red",
+                alpha=0.6,
+                s=7,
+            )
+            sns.lineplot(
+                data=losses_valid,
+                x="iteration",
+                y="loss_rolling",
+                ax=ax,
+                label="valid (rolling)",
+                color="red",
+                # alpha=0.5,
             )
 
         ax.legend(title="set")
@@ -619,15 +653,27 @@ class LRFinderCallback(Callback):
     def get_losses(self) -> pd.DataFrame:
         return pd.DataFrame([asdict(l) for l in self.losses])
 
-    def plot(self, yscale: str = "linear"):
+    def plot(
+        self,
+        yscale: str = "linear",
+        ylim: T.Tuple[T.Union[int, float], T.Union[int, float]] = None,
+    ):
         fig, ax = plt.subplots(figsize=(12, 4))
         lr_find_data = self.get_losses()
         sns.lineplot(
             data=lr_find_data, x="lr", y="smooth_loss", ax=ax, label="smooth"
         )
-        sns.lineplot(data=lr_find_data, x="lr", y="loss", ax=ax, label="raw")
+        sns.lineplot(
+            data=lr_find_data,
+            x="lr",
+            y="loss",
+            ax=ax,
+            label="raw",
+            alpha=0.5,
+            linestyle="dashed",
+        )
         ax.legend(title="loss type")
-        ax.set(ylabel="loss", xscale="log", yscale=yscale)
+        ax.set(ylabel="loss", xscale="log", yscale=yscale, ylim=ylim)
         plt.tight_layout()
 
 
