@@ -468,14 +468,14 @@ def test_tokenizer_with_special_tokens():
         "<|endofprompt|>": 100276,
     }
     vocab_size = 200
-    model = rnnm_tok.TokenizerRegex()
-    model.fit(
+    tokenizer = rnnm_tok.TokenizerRegex()
+    tokenizer.fit(
         train_text, vocab_size=vocab_size, pattern=rnnm_tok.GPT4_SPLIT_PATTERN
     )
 
-    model.register_special_tokens(special_token2id_map)
+    tokenizer.register_special_tokens(special_token2id_map)
 
-    encoded_ids = model.encode(special_strings)
-    decoded_text = model.decode(encoded_ids)
+    encoded_ids = tokenizer.encode(special_strings)
+    decoded_text = tokenizer.decode(encoded_ids)
 
     assert decoded_text == special_strings
