@@ -208,11 +208,11 @@ class TokenizerSimple(TokenizerBase):
         for (token0, token1), idx in self.pair_map.items():
             self.vocab[idx] = self.vocab[token0] + self.vocab[token1]
 
-    def encode(self, text: str) -> T.List[TokenIDs]:
-        return [encode(text, self.pair_map)]
+    def encode(self, text: str) -> TokenIDs:
+        return encode(text, self.pair_map)
 
-    def decode(self, token_ids: T.List[TokenIDs]) -> str:
-        return "".join([decode(chunk, self.vocab) for chunk in token_ids])
+    def decode(self, token_ids: TokenIDs) -> str:
+        return "".join(decode(token_ids, self.vocab))
 
 
 GPT4_SPLIT_PATTERN = regex.compile(
@@ -285,36 +285,34 @@ class TokenizerRegex(TokenizerSimple):
         )
         self.use_special_tokens = True
 
-    def _ordinary_encode(self, text: str) -> T.List[TokenIDs]:
-        return [
-            encode(chunk, self.pair_map) for chunk in self.pattern.findall(text)
-        ]
+    def _ordinary_encode(self, text: str) -> TokenIDs:
+        ids = TokenIDs(ids=[])
+        for chunk in self.pattern.findall(text):
+            ids += encode(chunk, self.pair_map)
+        return ids
 
-    def encode(self, text: str) -> T.List[TokenIDs]:
+    def encode(self, text: str) -> TokenIDs:
         if not self.use_special_tokens:
             return self._ordinary_encode(text)
         else:
             chunks = regex.split(self.special_pattern, text)
-            ids = []
+            ids = TokenIDs(ids=[])
             for chunk in chunks:
                 if chunk in self.special_token2id_map:
-                    ids.append(TokenIDs(ids=[self.special_token2id_map[chunk]]))
+                    ids += TokenIDs(ids=[self.special_token2id_map[chunk]])
                 else:
-                    ids.extend(self._ordinary_encode(chunk))
+                    ids += self._ordinary_encode(chunk)
             return ids
 
-    def decode(self, token_ids: T.List[TokenIDs]) -> str:
+    def decode(self, token_ids: TokenIDs) -> str:
 
         if not self.use_special_tokens:
-            return "".join([decode(chunk, self.vocab) for chunk in token_ids])
+            return "".join(decode(token_ids, self.vocab))
         else:
             text = []
-            for chunk in token_ids:
-                if (
-                    len(chunk) == 1
-                    and chunk.ids[0] in self.inv_special_token2id_map
-                ):
-                    text.append(self.inv_special_token2id_map[chunk.ids[0]])
+            for _id in token_ids:
+                if _id in self.inv_special_token2id_map:
+                    text.append(self.inv_special_token2id_map[_id])
                 else:
-                    text.extend(decode(chunk, self.vocab))
+                    text.extend(decode(TokenIDs(ids=[_id]), self.vocab))
             return "".join(text)
