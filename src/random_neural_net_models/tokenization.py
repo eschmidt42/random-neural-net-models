@@ -240,7 +240,9 @@ class TokenizerRegex(TokenizerSimple):
         n_merges = vocab_size - len(unique_tokens)
 
         if n_merges <= 0:
-            raise ValueError(f"{n_merges=} needs to be > 0")
+            raise ValueError(
+                f"{n_merges=} needs to be > 0 ({vocab_size=:_d}, {len(unique_tokens)=:_d})"
+            )
 
         unique_tokens.update(self.base_token_ids)
 
