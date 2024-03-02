@@ -449,3 +449,33 @@ def test_tokenizer(name: str):
     token_ids = model.encode(eval_text)
     decoded_text = model.decode(token_ids)
     assert eval_text == decoded_text
+
+
+def test_tokenizer_with_special_tokens():
+    train_text = TEST_STRINGS["tom lehrer: the elements song"]
+    special_strings = """
+<|endoftext|>Hello world this is one document
+<|endoftext|>And this is another document
+<|endoftext|><|fim_prefix|>And this one has<|fim_suffix|> tokens.<|fim_middle|> FIM
+<|endoftext|>Last document!!! <|endofprompt|>
+""".strip()
+
+    special_token2id_map = {
+        "<|endoftext|>": 100257,
+        "<|fim_prefix|>": 100258,
+        "<|fim_middle|>": 100259,
+        "<|fim_suffix|>": 100260,
+        "<|endofprompt|>": 100276,
+    }
+    vocab_size = 200
+    model = rnnm_tok.TokenizerRegex()
+    model.fit(
+        train_text, vocab_size=vocab_size, pattern=rnnm_tok.GPT4_SPLIT_PATTERN
+    )
+
+    model.register_special_tokens(special_token2id_map)
+
+    encoded_ids = model.encode(special_strings)
+    decoded_text = model.decode(encoded_ids)
+
+    assert decoded_text == special_strings
