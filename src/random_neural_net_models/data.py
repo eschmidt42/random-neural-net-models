@@ -147,8 +147,8 @@ class MNISTBlockWithLabels:
 def collate_mnist_dataset_to_block_with_labels(
     input: T.List[T.Tuple[torch.Tensor, torch.Tensor]]
 ) -> MNISTBlockWithLabels:
-    images = torch.concat([v[0] for v in input])  # .float()
-    labels = torch.concat([v[1] for v in input])  # .float()
+    images = torch.concat([v[0] for v in input])
+    labels = torch.concat([v[1] for v in input])
     return MNISTBlockWithLabels(
         image=images, label=labels, batch_size=[images.shape[0]]
     )
@@ -182,23 +182,6 @@ class MNISTDatasetWithNoise(Dataset):
             img = rearrange(img, "h w -> 1 h w")
 
         return img, torch.tensor([noise])
-        # img = torch.from_numpy(
-        #     self.X.iloc[idx].values / self.f
-        # ).float()  # normalizing
-
-        # if self.transform:
-        #     img = self.transform(img)
-
-        # label = torch.tensor([int(self.y.iloc[idx])])
-
-        # if self.one_hot:
-        #     label = F.one_hot(label, num_classes=self.num_classes)
-        #     label[label == 0] = -1  # True = 1, False = -1
-        #     label = label.float()
-        # else:
-        #     label = torch.tensor(label, dtype=torch.int64)
-
-        # return img, label
 
 
 @tensorclass
