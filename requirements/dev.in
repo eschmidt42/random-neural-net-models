@@ -1,8 +1,6 @@
 -c core.txt
 -c test.txt
 -c publish.txt
-black
-isort
 pre-commit
 jupyterlab
 jupyter-contrib-nbextensions
