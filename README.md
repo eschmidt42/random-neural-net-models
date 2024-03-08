@@ -41,3 +41,5 @@ See jupyter notebooks in [`nbs/`](https://github.com/eschmidt42/random-neural-ne
     * `mingpt_sort.ipynb`
     * `mingpt_char.ipynb`
     * `mingpt_adder.ipynb`
+* transformer: `language-model.ipynb`
+* tokenization: `tokenization.ipynb`
