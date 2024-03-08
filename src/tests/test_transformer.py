@@ -219,7 +219,6 @@ def test_EncoderTransformerBlock(causal: bool):
 @pytest.mark.parametrize("dec_n_tokens", [19, 20, 21])
 @pytest.mark.parametrize("causal", [False, True])
 def test_DecoderTransformerBlock(dec_n_tokens: int, causal: bool):
-
     dec_emb_dim = 10
     enc_emb_dim = 30
     enc_n_tokens = 20
@@ -376,6 +375,10 @@ def test_LanguageModel():
     probs = F.softmax(logits, dim=-1)
     assert torch.allclose(probs.sum(dim=-1), torch.ones(batch_size, n_tokens))
 
+    generated_ids = language_model.generate(X, max_new_tokens=1)
+    assert not torch.allclose(X[:, -1], generated_ids[:, -1])
+    assert torch.allclose(X[:, -1], generated_ids[:, -2])
+
 
 def test_LanguageModelWithTensordict():
     vocab_size = 100
@@ -404,3 +407,27 @@ def test_LanguageModelWithTensordict():
 
     assert logits.shape == (batch_size, n_tokens, vocab_size)
     assert torch.isfinite(logits).all()
+
+    generated_ids = language_model.generate(X, max_new_tokens=1)
+    assert not torch.allclose(X.x[:, -1], generated_ids[:, -1])
+    assert torch.allclose(X.x[:, -1], generated_ids[:, -2])
+
+
+def test_CrossEntropyLoss():
+    num_classes = 10
+    batch_size = 5
+    seq_length = 20
+
+    loss_fn = rnnm_trans.CrossEntropyLoss()
+
+    inference = torch.randn(batch_size, seq_length, num_classes)
+    input = rnnm_text.TokenIDBlockXY(
+        x=torch.randn(batch_size, seq_length),
+        y=torch.randint(num_classes, (batch_size, seq_length)),
+        batch_size=[batch_size],
+    )
+
+    output = loss_fn(inference, input)
+
+    assert output.shape == ()
+    assert torch.isfinite(output).all()

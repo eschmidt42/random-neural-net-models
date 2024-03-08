@@ -5,8 +5,10 @@ from pathlib import Path
 import torch
 from tensordict import tensorclass
 from torch.utils.data import Dataset
-
+import random_neural_net_models.utils as utils
 import random_neural_net_models.tokenization as rnnm_tok
+
+logger = utils.logger
 
 
 def find_files(path: Path, suffix: str) -> T.List[Path]:
@@ -19,7 +21,6 @@ def concat_files(files: T.List[Path], join_str: str) -> str:
 
 
 class TextDataset(Dataset):
-
     def __init__(
         self,
         path: Path,
@@ -69,7 +70,6 @@ class TextDataset(Dataset):
     def scattered_ids_to_strings(
         self, ids_scattered: torch.LongTensor
     ) -> T.List[str]:
-
         strings = []
         for ids in ids_scattered:
             ids = rnnm_tok.TokenIDs(ids=map(int, ids))
@@ -80,11 +80,21 @@ class TextDataset(Dataset):
         ids_scattered = self.dense_to_scattered_ids(ids_dense)
         return self.scattered_ids_to_strings(ids_scattered)
 
+    def text_to_dense_ids(self, text: str) -> torch.LongTensor:
+        ids = self.tokenizer.encode(text)
+        if len(ids) > self.block_size:
+            msg = f"Given text was encoded into {len(ids)} token ids, which exceeds {self.block_size=:_d}, hence keeping only the last {self.block_size}"
+            logger.warning(msg)
+            ids = ids[-self.block_size :]
+        ids = [
+            self.map_ids_scattered2dense[id_scattered] for id_scattered in ids
+        ]
+        return torch.tensor([ids], dtype=torch.long)
+
     def __len__(self):
         return len(self.text_encoded) - self.block_size
 
     def __getitem__(self, idx: int):
-
         scattered_ids = self.text_encoded[idx : idx + self.block_size + 1]
         ids = [
             self.map_ids_scattered2dense[id_scattered]
@@ -104,7 +114,7 @@ class TokenIDBlockXY:
 
 
 def collate_text_dataset_to_block(
-    input: T.List[T.Tuple[torch.LongTensor, torch.LongTensor]]
+    input: T.List[T.Tuple[torch.LongTensor, torch.LongTensor]],
 ) -> TokenIDBlockXY:
     x = torch.stack([v[0] for v in input])
     y = torch.stack([v[1] for v in input])
