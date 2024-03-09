@@ -12,7 +12,7 @@ import torch.nn.modules.loss as torch_loss
 import tqdm
 from einops import rearrange
 from einops.layers.torch import Rearrange
-from tensordict import TensorDict, tensorclass
+from tensordict import tensorclass
 from torch.utils.data import DataLoader
 
 import random_neural_net_models.data as rnnm_data
@@ -43,6 +43,52 @@ def get_noise_level_embedding(
         return emb.float()
 
 
+class Attention2D(nn.Module):
+    # based on https://github.com/fastai/course22p2/blob/master/nbs/28_diffusion-attn-cond.ipynb
+    def __init__(self, num_features_out: int, n_channels_per_head: int):
+        super().__init__()
+        self.nheads = num_features_out // n_channels_per_head
+        self.scale = math.sqrt(num_features_out / self.nheads)
+        self.norm = nn.LayerNorm(num_features_out)
+        self.qkv = nn.Linear(num_features_out, num_features_out * 3)
+        self.proj = nn.Linear(num_features_out, num_features_out)
+
+    def forward(self, X: torch.Tensor) -> torch.Tensor:
+        # TODO: replace @ with einops.einsum
+        _, _, h, w = X.shape
+
+        # (h d) = latent dim * 3
+        X = rearrange(X, "batch channels h w -> batch channels (h w)")
+        # X = rearrange(X, 'batch channels (heads d) -> (batch heads) channels d', h=self.nheads)
+
+        X = rearrange(X, "batch channels hw -> batch hw channels")
+        X = self.norm(X)
+        X = self.qkv(X)
+        X = rearrange(
+            X,
+            "batch hw (heads latent) -> (batch heads) hw latent",
+            heads=self.nheads,
+        )
+        q, k, v = torch.chunk(X, 3, dim=-1)  # each "(batch heads) hw latent"
+        kt = rearrange(
+            k,
+            "(batch heads) hw latent -> (batch heads) latent hw",
+            heads=self.nheads,
+        )
+        s = (q @ kt) / self.scale  # "(batch heads) hw hw"
+        X = s.softmax(dim=-1) @ v  # "(batch heads) hw latent"
+        X = rearrange(
+            X,
+            "(batch heads) hw latent -> batch hw (heads latent)",
+            heads=self.nheads,
+        )
+        X = self.proj(X)  # "batch hw (heads latent)"
+        X = rearrange(X, "batch (h w) channels -> batch channels h w", h=h, w=w)
+
+        return X
+
+
+# TODO - CONTINUE HERE: add Attention2D to ResBlock
 class ResBlock(nn.Module):
     def __init__(
         self,
@@ -89,6 +135,8 @@ class ResBlock(nn.Module):
             )
         )
 
+    # TODO: implement x + self.attention(x) at the end of the function
+    # using transformer.py's AttentionBlock
     def forward(self, x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         emb = self.emb_proj(t)
 
@@ -452,7 +500,7 @@ class UNetModel(nn.Module):
 
 
 def list_of_tuples_to_tensors(
-    batch: T.List[T.Tuple[torch.Tensor, int]]
+    batch: T.List[T.Tuple[torch.Tensor, int]],
 ) -> T.Tuple[torch.Tensor, torch.Tensor]:
     images, labels = zip(*batch)
     images = torch.stack(images)
@@ -501,7 +549,7 @@ def fudge_original_images(images: torch.Tensor) -> torch.Tensor:
 
 
 def apply_noise(
-    batch: T.List[T.Tuple[torch.Tensor, int]]
+    batch: T.List[T.Tuple[torch.Tensor, int]],
 ) -> T.Tuple[T.Tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
     "Applies noise to the input image and returns the noisy image, the noise level and the de-noised image"
 
@@ -535,7 +583,7 @@ class MNISTNoisyDataTrain:
 
 
 def mnist_noisy_collate_train(
-    batch: T.List[T.Tuple[torch.Tensor, int]]
+    batch: T.List[T.Tuple[torch.Tensor, int]],
 ) -> MNISTNoisyDataTrain:
     (noisy_images, noise_level), target_noise = apply_noise(batch)
 
