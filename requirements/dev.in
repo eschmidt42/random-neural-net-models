@@ -8,3 +8,5 @@ ipywidgets
 torchinfo
 bumpver
 line_profiler
+mypy
+types-tqdm
