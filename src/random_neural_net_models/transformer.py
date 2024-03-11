@@ -8,6 +8,7 @@ references:
 * cross-attention: https://sebastianraschka.com/blog/2023/self-attention-from-scratch.html
     * Q usually from decoder and K / V from encoder
 """
+
 import typing as T
 
 import torch
@@ -92,14 +93,12 @@ class Causal(nn.Module):
         mask = (
             self.bias[:, :, :NinQ, :NinK] == 0
         )  # TODO: why :NinQ and :NinK, or :S as originally by Karpathy?
-        # print(f"{attn=}")
-        # print(f"{mask=}")
+
         attn = attn.masked_fill(mask, float("-inf"))
         return attn
 
 
 class NonCausal(nn.Module):
-
     def forward(self, attn: torch.Tensor, *args) -> torch.Tensor:
         return attn
 
@@ -354,7 +353,6 @@ class TransformerDecoder(nn.Module):
         )
 
     def forward(self, X_dec: torch.Tensor, X_enc: torch.Tensor) -> torch.Tensor:
-
         t = X_dec.size()[-1]
         pos = torch.arange(0, t, dtype=torch.long, device=X_dec.device)
         pos = pos.unsqueeze(0)
@@ -409,11 +407,7 @@ class TransformerEncoderDecoder(nn.Module):
         return X_out
 
 
-# TODO: create encoder based class to generate text using model.py GPT.generate-like method
-
-
 class LanguageModel(nn.Module):
-
     def __init__(
         self,
         vocab_size: int,
@@ -451,7 +445,6 @@ class LanguageModel(nn.Module):
         temperature: float = 1.0,
         do_sample: bool = False,
     ) -> torch.LongTensor:
-
         for _ in range(max_new_tokens):
             if idx.size(1) > self.n_tokens:
                 idx_cond = idx[:, -self.n_tokens :]
@@ -475,7 +468,6 @@ class LanguageModel(nn.Module):
 
 
 class LanguageModelWithTensordict(nn.Module):
-
     def __init__(
         self,
         vocab_size: int,
