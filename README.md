@@ -36,7 +36,10 @@ See jupyter notebooks in [`nbs/`](https://github.com/eschmidt42/random-neural-ne
 * unet:
     * `unet_fastai2022.ipynb`
     * `unet-isbi2012`
-* diffusion (unet + noise): `diffusion_fastai2022.ipynb`
+* diffusion (unet + noise):
+  * `diffusion_fastai2022.ipynb`
+  * `diffusion_fastai2022_learner.ipynb`
+  * `diffusion_fastai2022_learner_with_attention.ipynb`
 * [mingpt](https://github.com/karpathy/minGPT):
     * `mingpt_sort.ipynb`
     * `mingpt_char.ipynb`
