@@ -7,10 +7,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
-from einops.layers.torch import Rearrange
-from tensordict import TensorDict, tensorclass
-from torch.utils.data import DataLoader, Dataset
-from torchvision import transforms
+from tensordict import tensorclass
+from torch.utils.data import Dataset
 
 # ============================================
 # numpy tabular dataset
@@ -46,12 +44,23 @@ class XyBlock:
     y: torch.Tensor
 
 
-def collate_numpy_dataset_to_xyblock(
-    input: T.Tuple[torch.Tensor, torch.Tensor]
-) -> XyBlock:
-    x = torch.concat([v[0] for v in input]).float()
-    y = torch.concat([v[1] for v in input]).float()
-    return XyBlock(x=x, y=y, batch_size=[x.shape[0]])
+def wrap_collate_numpy_dataset_to_xyblock(make_y_float: bool) -> T.Callable:
+    def collate_numpy_dataset_to_xyblock(
+        input: T.Tuple[torch.Tensor, torch.Tensor],
+    ) -> XyBlock:
+        x = torch.concat([v[0] for v in input]).float()
+        y = torch.concat([v[1] for v in input])
+        if make_y_float:
+            y = y.float()
+        return XyBlock(x=x, y=y, batch_size=[x.shape[0]])
+
+    return collate_numpy_dataset_to_xyblock
+
+
+collate_numpy_dataset_to_xyblock = wrap_collate_numpy_dataset_to_xyblock(True)
+collate_numpy_dataset_to_xyblock_keep_orig_y = (
+    wrap_collate_numpy_dataset_to_xyblock(False)
+)
 
 
 class NumpyInferenceDataset(Dataset):
@@ -145,7 +154,7 @@ class MNISTBlockWithLabels:
 
 
 def collate_mnist_dataset_to_block_with_labels(
-    input: T.List[T.Tuple[torch.Tensor, torch.Tensor]]
+    input: T.List[T.Tuple[torch.Tensor, torch.Tensor]],
 ) -> MNISTBlockWithLabels:
     images = torch.concat([v[0] for v in input])
     labels = torch.concat([v[1] for v in input])
@@ -191,7 +200,7 @@ class MNISTBlockWithNoise:
 
 
 def collate_mnist_dataset_to_block_with_noise(
-    input: T.List[T.Tuple[torch.Tensor, torch.Tensor]]
+    input: T.List[T.Tuple[torch.Tensor, torch.Tensor]],
 ) -> MNISTBlockWithNoise:
     images = torch.concat([v[0] for v in input])  # .float()
     noise_levels = torch.concat([v[1] for v in input])  # .float()
