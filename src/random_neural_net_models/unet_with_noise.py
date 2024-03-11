@@ -45,13 +45,19 @@ def get_noise_level_embedding(
 
 class Attention2D(nn.Module):
     # based on https://github.com/fastai/course22p2/blob/master/nbs/28_diffusion-attn-cond.ipynb
-    def __init__(self, num_features_out: int, n_channels_per_head: int):
+    def __init__(self, n_cnn_channels: int, n_channels_per_head: int):
         super().__init__()
-        self.nheads = num_features_out // n_channels_per_head
-        self.scale = math.sqrt(num_features_out / self.nheads)
-        self.norm = nn.LayerNorm(num_features_out)
-        self.qkv = nn.Linear(num_features_out, num_features_out * 3)
-        self.proj = nn.Linear(num_features_out, num_features_out)
+        assert (
+            n_channels_per_head % n_channels_per_head == 0
+        ), f"{n_channels_per_head=} must be a multiple of {n_cnn_channels=}"
+        self.n_heads = n_cnn_channels // n_channels_per_head
+        logger.info(
+            f"Attention for {n_cnn_channels=} with {n_channels_per_head=} -> {self.n_heads=}"
+        )
+        self.scale = math.sqrt(n_cnn_channels / self.n_heads)
+        self.norm = nn.LayerNorm(n_cnn_channels)
+        self.qkv = nn.Linear(n_cnn_channels, n_cnn_channels * 3)
+        self.proj = nn.Linear(n_cnn_channels, n_cnn_channels)
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         # TODO: replace @ with einops.einsum
@@ -67,20 +73,20 @@ class Attention2D(nn.Module):
         X = rearrange(
             X,
             "batch hw (heads latent) -> (batch heads) hw latent",
-            heads=self.nheads,
+            heads=self.n_heads,
         )
-        q, k, v = torch.chunk(X, 3, dim=-1)  # each "(batch heads) hw latent"
-        kt = rearrange(
-            k,
+        Q, K, V = torch.chunk(X, 3, dim=-1)  # each "(batch heads) hw latent"
+        Ktrans = rearrange(
+            K,
             "(batch heads) hw latent -> (batch heads) latent hw",
-            heads=self.nheads,
+            heads=self.n_heads,
         )
-        s = (q @ kt) / self.scale  # "(batch heads) hw hw"
-        X = s.softmax(dim=-1) @ v  # "(batch heads) hw latent"
+        S = (Q @ Ktrans) / self.scale  # "(batch heads) hw hw"
+        X = S.softmax(dim=-1) @ V  # "(batch heads) hw latent"
         X = rearrange(
             X,
             "(batch heads) hw latent -> batch hw (heads latent)",
-            heads=self.nheads,
+            heads=self.n_heads,
         )
         X = self.proj(X)  # "batch hw (heads latent)"
         X = rearrange(X, "batch (h w) channels -> batch channels h w", h=h, w=w)
@@ -97,6 +103,7 @@ class ResBlock(nn.Module):
         num_emb: int,
         stride: int = 1,
         ks: int = 3,
+        n_channels_per_head: int = 0,
     ):
         super().__init__()
 
@@ -134,6 +141,11 @@ class ResBlock(nn.Module):
                 num_features_in, num_features_out, kernel_size=1, stride=1
             )
         )
+        self.attention = (
+            nn.Identity()
+            if n_channels_per_head == 0
+            else Attention2D(num_features_out, n_channels_per_head)
+        )
 
     # TODO: implement x + self.attention(x) at the end of the function
     # using transformer.py's AttentionBlock
@@ -147,7 +159,10 @@ class ResBlock(nn.Module):
         x_conv = self.conv2(x_conv)
 
         x_id = self.idconv(x)
-        return x_conv + x_id
+        x_skip1 = x_conv + x_id
+        x_att = self.attention(x_skip1)
+        x_skip2 = x_skip1 + x_att
+        return x_skip2
 
 
 class SavedResBlock(unet.SaveModule, ResBlock):
@@ -162,6 +177,7 @@ class DownBlock(nn.Module):
         num_emb: int,
         add_down: bool = True,
         num_resnet_layers: int = 1,
+        n_channels_per_head: int = 0,
     ):
         """Sequence of resnet blocks with a downsample at the end, see stride."""
         super().__init__()
@@ -172,6 +188,7 @@ class DownBlock(nn.Module):
             num_features_out,
             num_emb,
             num_resnet_layers=num_resnet_layers,
+            n_channels_per_head=n_channels_per_head,
         )
 
         self.setup_downscaling(num_features_out)
@@ -182,17 +199,26 @@ class DownBlock(nn.Module):
         num_features_out: int,
         num_emb: int,
         num_resnet_layers: int = 2,
+        n_channels_per_head: int = 0,
     ):
         self.res_blocks = nn.ModuleList()
         for i in range(num_resnet_layers - 1):
             n_in = num_features_in if i == 0 else num_features_out
-            self.res_blocks.append(ResBlock(n_in, num_features_out, num_emb))
+            self.res_blocks.append(
+                ResBlock(
+                    n_in,
+                    num_features_out,
+                    num_emb,
+                    n_channels_per_head=n_channels_per_head,
+                )
+            )
 
         self.res_blocks.append(
             SavedResBlock(
                 num_features_in=num_features_out,
                 num_features_out=num_features_out,
                 num_emb=num_emb,
+                n_channels_per_head=n_channels_per_head,
             )
         )
 
@@ -216,7 +242,11 @@ class DownBlock(nn.Module):
 
 class UNetDown(nn.Module):
     def __init__(
-        self, num_features: T.Tuple[int], num_layers: int, num_emb: int
+        self,
+        num_features: T.Tuple[int],
+        num_layers: int,
+        num_emb: int,
+        n_channels_per_head: int = 0,
     ) -> None:
         super().__init__()
 
@@ -232,6 +262,7 @@ class UNetDown(nn.Module):
                     num_emb,
                     add_down=add_down,
                     num_resnet_layers=num_layers,
+                    n_channels_per_head=n_channels_per_head,
                 )
                 for n_in, n_out, add_down in zip(n_ins, n_outs, add_downs)
             ]
@@ -256,6 +287,7 @@ class UpBlock(nn.Module):
         num_emb: int,
         add_up: bool = True,
         num_resnet_layers: int = 2,
+        n_channels_per_head: int = 0,
     ):
         super().__init__()
         self.add_up = add_up
@@ -265,6 +297,7 @@ class UpBlock(nn.Module):
             num_features_out,
             num_emb,
             num_resnet_layers=num_resnet_layers,
+            n_channels_per_head=n_channels_per_head,
         )
 
         self.setup_upscaling(num_features_out)
@@ -276,6 +309,7 @@ class UpBlock(nn.Module):
         num_output_features: int,
         num_emb: int,
         num_resnet_layers: int = 2,
+        n_channels_per_head: int = 0,
     ):
         self.res_blocks = nn.ModuleList()
         n_out = num_output_features
@@ -290,7 +324,14 @@ class UpBlock(nn.Module):
             if i == 0:
                 n_in += num_features_in
 
-            self.res_blocks.append(ResBlock(n_in, n_out, num_emb))
+            self.res_blocks.append(
+                ResBlock(
+                    n_in,
+                    n_out,
+                    num_emb,
+                    n_channels_per_head=n_channels_per_head,
+                )
+            )
 
     def setup_upscaling(self, num_features_out: int):
         if self.add_up:
@@ -323,6 +364,7 @@ class UNetUp(nn.Module):
         self,
         downs: UNetDown,
         num_emb: int,
+        n_channels_per_head: int = 0,
     ) -> None:
         super().__init__()
 
@@ -371,6 +413,7 @@ class UNetUp(nn.Module):
                 num_emb,
                 add_up=add_up,
                 num_resnet_layers=num_resnet_layers,
+                n_channels_per_head=n_channels_per_head,
             )
             self.ups.append(up_block)
 
@@ -390,6 +433,7 @@ class UNetModel(nn.Module):
         list_num_features: T.Tuple[int] = (8, 16),
         num_layers: int = 2,
         max_emb_period: int = 10000,
+        n_channels_per_head: int = 0,  # 0 = no attention
     ):
         super().__init__()
         if in_channels != out_channels:
@@ -405,14 +449,24 @@ class UNetModel(nn.Module):
         self.setup_input(in_channels, list_num_features)
 
         self.downs = UNetDown(
-            list_num_features, num_layers, self.n_noise_level_emb
+            list_num_features,
+            num_layers,
+            self.n_noise_level_emb,
+            n_channels_per_head=n_channels_per_head,
         )
 
         self.mid_block = ResBlock(
-            list_num_features[-1], list_num_features[-1], self.n_noise_level_emb
+            list_num_features[-1],
+            list_num_features[-1],
+            self.n_noise_level_emb,
+            n_channels_per_head=0,
         )
 
-        self.ups = UNetUp(self.downs, self.n_noise_level_emb)
+        self.ups = UNetUp(
+            self.downs,
+            self.n_noise_level_emb,
+            n_channels_per_head=n_channels_per_head,
+        )
 
         self.setup_output(list_num_features, out_channels)
 
