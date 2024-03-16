@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import torch
 import torch.nn.modules.loss as torch_loss
-
+import typing as T
 import random_neural_net_models.data as rnnm_data
 
 
@@ -40,7 +40,9 @@ class CrossEntropyXy(torch_loss.CrossEntropyLoss):
         super().__init__(*args, **kwargs)
 
     def forward(
-        self, inference: torch.Tensor, input: rnnm_data.XyBlock
+        self,
+        inference: torch.Tensor,
+        input: T.Union[rnnm_data.XyBlock, rnnm_data.XyBlock_numcat],
     ) -> torch.Tensor:
         return super().forward(inference, input.y.ravel())
 

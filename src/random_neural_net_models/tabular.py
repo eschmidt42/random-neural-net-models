@@ -57,9 +57,9 @@ class ImputeMissingness(nn.Module):
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         is_finite = torch.isfinite(X)
-        is_finite = is_finite  # .to(X.device)
+        is_finite = is_finite
         is_infinite = torch.logical_not(is_finite)
-        bias = self.bias.expand(X.shape[0], -1)  # .to(X.device)
+        bias = self.bias.expand(X.shape[0], -1)
         X_imputed = X.masked_fill(is_infinite, 0)
         X_imputed += bias.masked_fill(is_finite, 0)
 
@@ -115,17 +115,27 @@ class TabularModelClassification(nn.Module):
         n_classes: int,
         use_batch_norm: bool,
         do_impute: bool = False,
+        n_categories_per_column: T.List[int] = None,
         impute_bias_source: BiasSources = BiasSources.zero,
     ) -> None:
         super().__init__()
 
         n_acts = [n_features] + n_hidden + [n_classes]
-        self.net = TabularModel(
-            n_hidden=n_acts,
-            use_batch_norm=use_batch_norm,
-            do_impute=do_impute,
-            impute_bias_source=impute_bias_source,
-        )
+        if n_categories_per_column is None:
+            self.net = TabularModel(
+                n_hidden=n_acts,
+                use_batch_norm=use_batch_norm,
+                do_impute=do_impute,
+                impute_bias_source=impute_bias_source,
+            )
+        else:
+            self.net = TabularModelNumericalAndCategorical(
+                n_hidden=n_acts,
+                n_categories_per_column=n_categories_per_column,
+                use_batch_norm=use_batch_norm,
+                do_impute=do_impute,
+                impute_bias_source=impute_bias_source,
+            )
 
     def forward(self, input: rnnm_data.XyBlock) -> torch.Tensor:
         return self.net(input)
@@ -181,3 +191,105 @@ def make_missing(
     X_miss = X.copy()
     X_miss[mask] = float("inf")
     return X_miss, mask
+
+
+def calc_categorical_feature_embedding_dimension(n_cat: int) -> int:
+    # https://github.com/fastai/fastai/blob/1fec8a2380d6de28d081435e88683a440c47a2f1/fastai/tabular/model.py#L16C12-L16C46
+    return min(600, round(1.6 * n_cat**0.56))
+
+
+class TabularModelNumericalAndCategorical(nn.Module):
+    def __init__(
+        self,
+        n_hidden: T.List[int],
+        n_categories_per_column: T.List[
+            int
+        ],  # TODO: how to handle missingness here?
+        use_batch_norm: bool,
+        do_impute: bool = False,
+        impute_bias_source: BiasSources = BiasSources.zero,
+    ) -> None:
+        super().__init__()
+
+        layers = []
+        if do_impute:
+            raise NotImplementedError("missingness not handled yet")
+            layers.append(
+                ImputeMissingness(
+                    n_features=n_hidden[0], bias_source=impute_bias_source
+                )
+            )
+            n_hidden[0] = (
+                n_hidden[0] * 2
+            )  # because ImputeMissingness horizontally stacks boolean missingness flags
+
+        self.categoric_column_ids = list(range(len(n_categories_per_column)))
+
+        ids_to_keep = [
+            i for i, v in enumerate(n_categories_per_column) if v > 1
+        ]
+        if len(ids_to_keep) < len(n_categories_per_column):
+            ids_to_drop = [
+                v
+                for i, v in enumerate(self.categoric_column_ids)
+                if i not in ids_to_keep
+            ]
+            n_cats_per_col_to_drop = [
+                v
+                for i, v in enumerate(n_categories_per_column)
+                if i not in ids_to_keep
+            ]
+            msg = f"found that ({len(ids_to_drop)}) provided categorical columns ({ids_to_drop}) had an ordinality of < 2 ({n_cats_per_col_to_drop}). dropping them."
+            logger.warning(msg)
+
+        self.categoric_column_ids = [
+            self.categoric_column_ids[i] for i in ids_to_keep
+        ]
+        self.n_categories_per_column = [
+            n_categories_per_column[i] for i in ids_to_keep
+        ]
+
+        self.emb_dims = [
+            calc_categorical_feature_embedding_dimension(n_categories)
+            for n_categories in self.n_categories_per_column
+        ]
+        self.embeddings = nn.ModuleList(
+            [
+                nn.Embedding(n_categories, emb_dim)
+                for n_categories, emb_dim in zip(
+                    self.n_categories_per_column, self.emb_dims
+                )
+            ]
+        )
+
+        n_num_in = n_hidden[0] - len(n_categories_per_column)
+        n_emb_in = sum(self.emb_dims)
+
+        n_hidden[0] = n_num_in + n_emb_in
+
+        for i, (n_in, n_out) in enumerate(zip(n_hidden[:-1], n_hidden[1:])):
+            is_not_last = i <= len(n_hidden) - 3
+
+            layers.append(
+                Layer(
+                    n_in=n_in,
+                    n_out=n_out,
+                    use_batch_norm=use_batch_norm,
+                    use_activation=is_not_last,
+                )
+            )
+
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, input: rnnm_data.XyBlock_numcat) -> torch.Tensor:
+        x_num = input.x_numerical
+        x_cat = input.x_categorical
+        x_emb = torch.cat(
+            [
+                embedding(x_cat[:, i])
+                for i, embedding in enumerate(self.embeddings)
+            ],
+            dim=1,
+        )
+        x = torch.cat([x_num, x_emb], dim=1)
+        return self.net(x)

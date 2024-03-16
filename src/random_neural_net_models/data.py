@@ -9,6 +9,7 @@ import torch.nn.functional as F
 from einops import rearrange
 from tensordict import tensorclass
 from torch.utils.data import Dataset
+from functools import partial
 
 # ============================================
 # numpy tabular dataset
@@ -38,28 +39,89 @@ class NumpyTrainingDataset(Dataset):
         return x, y
 
 
+class NumpyNumCatTrainingDataset(Dataset):
+    def __init__(self, X_numerical: np.ndarray, X_categorical, y: np.ndarray):
+        self.X_num = X_numerical
+        self.X_cat = X_categorical
+        self.y = y
+        self.n = len(X_numerical)
+
+        if X_numerical.shape[0] != X_categorical.shape[0]:
+            raise ValueError(
+                f"X_numerical and X_categorical must have same length, got {X_numerical.shape[0]} and {X_categorical.shape[0]}"
+            )
+        if X_numerical.shape[0] != y.shape[0]:
+            raise ValueError(
+                f"X and y must have same length, got {X_numerical.shape[0]} and {y.shape[0]}"
+            )
+        if y is not None and y.ndim > 1:
+            raise ValueError(f"y must be 1-dimensional, got {y.ndim}")
+
+    def __len__(self):
+        return self.n
+
+    def __getitem__(
+        self, idx: int
+    ) -> T.Tuple[torch.Tensor, torch.LongTensor, torch.Tensor]:
+        x_num = torch.from_numpy(self.X_num[[idx], :]).float()
+        x_cat = torch.from_numpy(self.X_cat[[idx], :]).long()
+        y = torch.tensor([self.y[idx]])
+        y = rearrange(y, "n -> n 1")
+
+        return x_num, x_cat, y
+
+
 @tensorclass
 class XyBlock:
     x: torch.Tensor
     y: torch.Tensor
 
 
-def wrap_collate_numpy_dataset_to_xyblock(make_y_float: bool) -> T.Callable:
-    def collate_numpy_dataset_to_xyblock(
-        input: T.Tuple[torch.Tensor, torch.Tensor],
-    ) -> XyBlock:
-        x = torch.concat([v[0] for v in input]).float()
-        y = torch.concat([v[1] for v in input])
-        if make_y_float:
-            y = y.float()
-        return XyBlock(x=x, y=y, batch_size=[x.shape[0]])
-
-    return collate_numpy_dataset_to_xyblock
+@tensorclass
+class XyBlock_numcat:  # for separate numerical and categorical data in x
+    x_numerical: torch.Tensor
+    x_categorical: torch.LongTensor
+    y: torch.Tensor
 
 
-collate_numpy_dataset_to_xyblock = wrap_collate_numpy_dataset_to_xyblock(True)
-collate_numpy_dataset_to_xyblock_keep_orig_y = (
-    wrap_collate_numpy_dataset_to_xyblock(False)
+def collate_numpy_dataset_to_xyblock_template(
+    input: T.Tuple[torch.Tensor, torch.Tensor],
+    make_y_float: bool,
+) -> XyBlock:
+    x = torch.concat([v[0] for v in input]).float()
+    y = torch.concat([v[1] for v in input])
+    if make_y_float:
+        y = y.float()
+    return XyBlock(x=x, y=y, batch_size=[x.shape[0]])
+
+
+collate_numpy_dataset_to_xyblock = partial(
+    collate_numpy_dataset_to_xyblock_template, make_y_float=True
+)
+collate_numpy_dataset_to_xyblock_keep_orig_y = partial(
+    collate_numpy_dataset_to_xyblock_template, make_y_float=False
+)
+
+
+def collate_numpy_numcat_dataset_to_xyblock_template(
+    input: T.Tuple[torch.Tensor, torch.LongTensor, torch.Tensor],
+    make_y_float: bool,
+) -> XyBlock:
+    x_num = torch.concat([v[0] for v in input]).float()
+    x_cat = torch.concat([v[1] for v in input]).long()
+    y = torch.concat([v[2] for v in input])
+    if make_y_float:
+        y = y.float()
+    return XyBlock_numcat(
+        x_numerical=x_num, x_categorical=x_cat, y=y, batch_size=[x_num.shape[0]]
+    )
+
+
+collate_numpy_numcat_dataset_to_xyblock = partial(
+    collate_numpy_numcat_dataset_to_xyblock_template, make_y_float=True
+)
+collate_numpy_numcat_dataset_to_xyblock_keep_orig_y = partial(
+    collate_numpy_numcat_dataset_to_xyblock_template, make_y_float=False
 )
 
 
