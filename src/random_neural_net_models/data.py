@@ -40,6 +40,16 @@ class NumpyTrainingDataset(Dataset):
 
 
 class NumpyNumCatTrainingDataset(Dataset):
+    # negative values in X_categorical indicate missingness, because X_categorical is expected to be of type int
+
+    X_num: np.ndarray
+    X_cat: np.ndarray
+    y: np.ndarray
+    n: int
+    cat_maps: T.Dict[int, T.Dict[int, int]]
+    inv_cat_maps: T.Dict[int, T.Dict[int, int]]
+    cat_fallbacks: T.Dict[int, int]
+
     def __init__(self, X_numerical: np.ndarray, X_categorical, y: np.ndarray):
         self.X_num = X_numerical
         self.X_cat = X_categorical
@@ -57,18 +67,54 @@ class NumpyNumCatTrainingDataset(Dataset):
         if y is not None and y.ndim > 1:
             raise ValueError(f"y must be 1-dimensional, got {y.ndim}")
 
+        self._create_cat_id_maps()
+
+    def _create_cat_id_maps(self):
+        self.cat_maps = {}
+        self.cat_fallbacks = {}
+        self.inv_cat_maps = {}
+
+        for col_i, col_vals in enumerate(self.X_cat.T):
+            unique_categories = set(v for v in col_vals if v >= 0)
+            _map = {val: _id for _id, val in enumerate(unique_categories)}
+            self.cat_maps[col_i] = _map
+            _inv_map = {_id: val for _id, val in _map.items()}
+            self.cat_fallbacks[col_i] = len(_map)
+            self.inv_cat_maps[col_i] = _inv_map
+
     def __len__(self):
         return self.n
+
+    def _map_cats_to_ids(self, x_cat: np.ndarray) -> np.ndarray:
+        return np.array(
+            [
+                [
+                    self.cat_maps[i].get(v, self.cat_fallbacks[i])
+                    for i, v in enumerate(x_cat)
+                ]
+            ],
+            dtype=np.integer,
+        )
 
     def __getitem__(
         self, idx: int
     ) -> T.Tuple[torch.Tensor, torch.LongTensor, torch.Tensor]:
         x_num = torch.from_numpy(self.X_num[[idx], :]).float()
-        x_cat = torch.from_numpy(self.X_cat[[idx], :]).long()
+        x_cat = torch.from_numpy(
+            self._map_cats_to_ids(self.X_cat[idx, :])
+        ).long()
         y = torch.tensor([self.y[idx]])
         y = rearrange(y, "n -> n 1")
 
         return x_num, x_cat, y
+
+
+def calc_n_categories_per_column(X_cat: np.ndarray) -> T.List[int]:
+    # X_cat is expected to be an array of integers.
+    # hence only values >= 0 count as a category and negative values indicate missingness
+    unique_cats = [np.unique(X_cat[:, i]) for i in range(X_cat.shape[1])]
+    unique_cats = [[v for v in col_vals if v >= 0] for col_vals in unique_cats]
+    return [len(col_vals) for col_vals in unique_cats]
 
 
 @tensorclass
