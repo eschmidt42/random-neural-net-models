@@ -161,6 +161,7 @@ class TabularModelRegression(nn.Module):
         std: float,
         use_batch_norm: bool,
         do_impute: bool = False,
+        n_categories_per_column: T.List[int] = None,
         impute_bias_source: BiasSources = BiasSources.zero,
     ) -> None:
         super().__init__()
@@ -168,12 +169,23 @@ class TabularModelRegression(nn.Module):
         n_acts = (
             [n_features] + n_hidden + [1]
         )  # hard-coded that only one target is predicted
-        self.net = TabularModel(
-            n_hidden=n_acts,
-            use_batch_norm=use_batch_norm,
-            do_impute=do_impute,
-            impute_bias_source=impute_bias_source,
-        )
+
+        if n_categories_per_column is None:
+            self.net = TabularModel(
+                n_hidden=n_acts,
+                use_batch_norm=use_batch_norm,
+                do_impute=do_impute,
+                impute_bias_source=impute_bias_source,
+            )
+        else:
+            self.net = TabularModelNumericalAndCategorical(
+                n_hidden=n_acts,
+                n_categories_per_column=n_categories_per_column,
+                use_batch_norm=use_batch_norm,
+                do_impute=do_impute,
+                impute_bias_source=impute_bias_source,
+            )
+
         self.scaler = StandardNormalScaler(mean=mean, std=std)
 
     def forward(self, input: rnnm_data.XyBlock) -> torch.Tensor:

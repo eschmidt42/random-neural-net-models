@@ -52,6 +52,8 @@ class MSELossXy(torch_loss.MSELoss):
         super().__init__(*args, **kwargs)
 
     def forward(
-        self, inference: torch.Tensor, input: rnnm_data.XyBlock
+        self,
+        inference: torch.Tensor,
+        input: T.Union[rnnm_data.XyBlock, rnnm_data.XyBlock_numcat],
     ) -> torch.Tensor:
         return super().forward(inference, input.y)
