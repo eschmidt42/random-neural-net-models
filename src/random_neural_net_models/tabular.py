@@ -6,6 +6,7 @@ import random_neural_net_models.data as rnnm_data
 import random_neural_net_models.utils as utils
 from enum import Enum
 import numpy as np
+from functools import partial
 
 logger = utils.get_logger("tabular.py")
 
@@ -195,18 +196,7 @@ class TabularModelRegression(nn.Module):
 
 
 def make_missing(
-    X: np.ndarray, p_missing: float = 0.1
-) -> T.Tuple[np.ndarray, np.ndarray]:
-    mask = np.random.choice(
-        [False, True], size=X.shape, p=[1 - p_missing, p_missing]
-    )
-    X_miss = X.copy()
-    X_miss[mask] = float("inf")
-    return X_miss, mask
-
-
-def make_missing_categorical(
-    X: np.ndarray, p_missing: float = 0.1, value: int = -1
+    X: np.ndarray, value: T.Union[float, int], p_missing: float = 0.1
 ) -> T.Tuple[np.ndarray, np.ndarray]:
     mask = np.random.choice(
         [False, True], size=X.shape, p=[1 - p_missing, p_missing]
@@ -214,6 +204,10 @@ def make_missing_categorical(
     X_miss = X.copy()
     X_miss[mask] = value
     return X_miss, mask
+
+
+make_missing_numerical = partial(make_missing, value=float("inf"))
+make_missing_categorical = partial(make_missing, value=-1)
 
 
 def calc_categorical_feature_embedding_dimension(n_cat: int) -> int:

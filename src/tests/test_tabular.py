@@ -131,17 +131,18 @@ def test_impute_missingness():
     assert torch.isfinite(output).all()
 
 
-def test_make_missing():
+@pytest.mark.parametrize("value", [float("inf"), -1])
+def test_make_missing(value):
     X = np.random.randn(1_000, 10)
     p_missing = 0.1
 
-    X_miss, mask = rnnm_tab.make_missing(X, p_missing)
+    X_miss, mask = rnnm_tab.make_missing(X, value, p_missing)
 
     assert X_miss.shape == X.shape
     assert mask.shape == X.shape
 
     # Check if missing values are correctly set to infinity
-    assert np.all(X_miss[mask] == float("inf"))
+    assert np.all(X_miss[mask] == value)
 
     # Check if non-missing values are unchanged
     assert np.all(X_miss[~mask] == X[~mask])
@@ -169,7 +170,7 @@ def test_highlevel_tabular_model_for_classification_with_missingness(
     )
     bs = 32
     x = np.random.randn(bs, n_features)
-    x, _ = rnnm_tab.make_missing(x, p_missing=0.5)
+    x, _ = rnnm_tab.make_missing_numerical(x, p_missing=0.5)
     x = torch.from_numpy(x).float()
     y = torch.randint(low=0, high=n_classes, size=(bs,))
     input = rnnm_data.XyBlock(x=x, y=y, batch_size=[bs])
@@ -205,7 +206,7 @@ def test_highlevel_tabular_model_for_regression_with_missingness(
 
     bs = 32
     x = np.random.randn(bs, n_features)
-    x, _ = rnnm_tab.make_missing(x, p_missing=0.5)
+    x, _ = rnnm_tab.make_missing_numerical(x, p_missing=0.5)
     x = torch.from_numpy(x).float()
     y = torch.randn(size=(bs,))
     input = rnnm_data.XyBlock(x=x, y=y, batch_size=[bs])
