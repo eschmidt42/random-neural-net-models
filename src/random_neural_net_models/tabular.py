@@ -41,31 +41,47 @@ class BiasSources(Enum):
 
 
 class ImputeMissingness(nn.Module):
-    def __init__(self, n_features: int, bias_source: BiasSources):
+    def __init__(
+        self, cols_with_missing: T.Tuple[int], bias_source: BiasSources
+    ):
         super().__init__()
+
+        if len(cols_with_missing) > len(set(cols_with_missing)):
+            msg = f"cols_with_missing={cols_with_missing} contains duplicates."
+            raise ValueError(msg)
 
         match bias_source:
             case BiasSources.zero:
-                bias = torch.zeros((1, n_features), dtype=torch.float)
+                bias = torch.zeros(
+                    (1, len(cols_with_missing)), dtype=torch.float
+                )
             case BiasSources.normal:
-                bias = torch.rand((1, n_features), dtype=torch.float)
+                bias = torch.rand(
+                    (1, len(cols_with_missing)), dtype=torch.float
+                )
             case _:
                 raise NotImplementedError(
                     f"{bias_source=} is not implemented in BiasSources, knows members: {BiasSources._member_names_()}"
                 )
 
         self.bias = nn.Parameter(bias)
+        self.register_buffer(
+            "cols_with_missing", torch.tensor(cols_with_missing)
+        )
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
-        is_finite = torch.isfinite(X)
-        is_finite = is_finite
+        X_sub = X[:, self.cols_with_missing].clone()
+        is_finite = torch.isfinite(X_sub)
+
         is_infinite = torch.logical_not(is_finite)
-        bias = self.bias.expand(X.shape[0], -1)
-        X_imputed = X.masked_fill(is_infinite, 0)
+        bias = self.bias.expand(X_sub.shape[0], -1)
+        X_imputed = X_sub.masked_fill(is_infinite, 0)
         X_imputed += bias.masked_fill(is_finite, 0)
 
         is_infinite = is_infinite.float()
-        X_out = torch.hstack((X_imputed, is_infinite))
+        X[:, self.cols_with_missing] = X_imputed
+        X_out = torch.hstack((X, is_infinite))
+
         return X_out
 
 
@@ -76,18 +92,23 @@ class TabularModel(nn.Module):
         use_batch_norm: bool,
         do_impute: bool = False,
         impute_bias_source: BiasSources = BiasSources.zero,
+        cols_with_missing: T.Tuple[int] = None,
     ) -> None:
         super().__init__()
 
         layers = []
         if do_impute:
+            if cols_with_missing is None:
+                msg = "do_impute=True but cols_with_missing=None. please provide a tuple of integers indicating which columns are expected to have missingness"
+                raise ValueError(msg)
             layers.append(
                 ImputeMissingness(
-                    n_features=n_hidden[0], bias_source=impute_bias_source
+                    cols_with_missing=cols_with_missing,
+                    bias_source=impute_bias_source,
                 )
             )
             n_hidden[0] = (
-                n_hidden[0] * 2
+                n_hidden[0] + len((cols_with_missing))
             )  # because ImputeMissingness horizontally stacks boolean missingness flags
 
         for i, (n_in, n_out) in enumerate(zip(n_hidden[:-1], n_hidden[1:])):
@@ -118,6 +139,7 @@ class TabularModelClassification(nn.Module):
         do_impute: bool = False,
         n_categories_per_column: T.List[int] = None,
         impute_bias_source: BiasSources = BiasSources.zero,
+        cols_with_missing: T.Tuple[int] = None,
     ) -> None:
         super().__init__()
 
@@ -128,6 +150,7 @@ class TabularModelClassification(nn.Module):
                 use_batch_norm=use_batch_norm,
                 do_impute=do_impute,
                 impute_bias_source=impute_bias_source,
+                cols_with_missing=cols_with_missing,
             )
         else:
             self.net = TabularModelNumericalAndCategorical(
@@ -136,6 +159,7 @@ class TabularModelClassification(nn.Module):
                 use_batch_norm=use_batch_norm,
                 do_impute=do_impute,
                 impute_bias_source=impute_bias_source,
+                cols_with_missing_num=cols_with_missing,
             )
 
     def forward(self, input: rnnm_data.XyBlock) -> torch.Tensor:
@@ -164,6 +188,7 @@ class TabularModelRegression(nn.Module):
         do_impute: bool = False,
         n_categories_per_column: T.List[int] = None,
         impute_bias_source: BiasSources = BiasSources.zero,
+        cols_with_missing: T.Tuple[int] = None,
     ) -> None:
         super().__init__()
 
@@ -177,6 +202,7 @@ class TabularModelRegression(nn.Module):
                 use_batch_norm=use_batch_norm,
                 do_impute=do_impute,
                 impute_bias_source=impute_bias_source,
+                cols_with_missing=cols_with_missing,
             )
         else:
             self.net = TabularModelNumericalAndCategorical(
@@ -185,6 +211,7 @@ class TabularModelRegression(nn.Module):
                 use_batch_norm=use_batch_norm,
                 do_impute=do_impute,
                 impute_bias_source=impute_bias_source,
+                cols_with_missing_num=cols_with_missing,
             )
 
         self.scaler = StandardNormalScaler(mean=mean, std=std)
@@ -196,13 +223,30 @@ class TabularModelRegression(nn.Module):
 
 
 def make_missing(
-    X: np.ndarray, value: T.Union[float, int], p_missing: float = 0.1
+    X: np.ndarray,
+    value: T.Union[float, int],
+    p_missing: float = 0.1,
+    cols_with_missing: T.Tuple[int] = None,
 ) -> T.Tuple[np.ndarray, np.ndarray]:
-    mask = np.random.choice(
-        [False, True], size=X.shape, p=[1 - p_missing, p_missing]
+    if cols_with_missing is not None and len(cols_with_missing) > len(
+        set(cols_with_missing)
+    ):
+        msg = f"cols_with_missing={cols_with_missing} contains duplicates."
+        raise ValueError(msg)
+
+    s = (
+        X.shape
+        if cols_with_missing is None
+        else (X.shape[0], len(cols_with_missing))
     )
+    mask = np.random.choice([False, True], size=s, p=[1 - p_missing, p_missing])
     X_miss = X.copy()
-    X_miss[mask] = value
+    if cols_with_missing is None:
+        X_miss[mask] = value
+    else:
+        for col, missingness in zip(cols_with_missing, mask.T):
+            X_miss[missingness, col] = value
+
     return X_miss, mask
 
 
@@ -223,6 +267,7 @@ class TabularModelNumericalAndCategorical(nn.Module):
         use_batch_norm: bool,
         do_impute: bool = False,
         impute_bias_source: BiasSources = BiasSources.zero,
+        cols_with_missing_num: T.Tuple[int] = None,
     ) -> None:
         super().__init__()
 
@@ -231,9 +276,12 @@ class TabularModelNumericalAndCategorical(nn.Module):
 
         if do_impute:
             self.impute = ImputeMissingness(
-                n_features=n_num_in, bias_source=impute_bias_source
+                cols_with_missing=cols_with_missing_num,
+                bias_source=impute_bias_source,
             )
-            n_num_in *= 2  # because ImputeMissingness horizontally stacks boolean missingness flags
+            n_num_in += len(
+                cols_with_missing_num
+            )  # because ImputeMissingness horizontally stacks boolean missingness flags
 
         self.categoric_column_ids = list(range(len(n_categories_per_column)))
 

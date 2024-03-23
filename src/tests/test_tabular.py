@@ -5,6 +5,7 @@ import random_neural_net_models.tabular as rnnm_tab
 import random_neural_net_models.data as rnnm_data
 import random_neural_net_models.losses as rnnm_loss
 import numpy as np
+import typing as T
 
 
 @pytest.mark.parametrize("use_batch_norm", [True, False])
@@ -25,14 +26,46 @@ def test_layer(use_batch_norm: bool, use_activation: bool):
 @pytest.mark.parametrize("use_batch_norm", [True, False])
 @pytest.mark.parametrize("n_classes", [2, 3])
 @pytest.mark.parametrize("n_features", [1, 4])
-def test_tabular_model(
-    use_batch_norm: bool, n_classes: int, n_features: int
-):  # use_batch_norm: bool
+def test_tabular_model(use_batch_norm: bool, n_classes: int, n_features: int):
     model = rnnm_tab.TabularModel(
         n_hidden=[n_features, 5, n_classes], use_batch_norm=use_batch_norm
     )
     bs = 32
     x = torch.randn(bs, n_features)
+    y = torch.randint(low=0, high=n_classes, size=(bs,))
+    input = rnnm_data.XyBlock(x=x, y=y, batch_size=[bs])
+    inference = model(input)
+    assert inference.shape == (bs, n_classes)
+    assert torch.isfinite(inference).all()
+
+    loss_fn = rnnm_loss.CrossEntropyXy()
+    loss = loss_fn(inference, input)
+
+    assert torch.isfinite(loss)
+
+
+@pytest.mark.parametrize(
+    "n_features,cols_with_missing",
+    [
+        (1, (0,)),
+        (4, (0,)),
+        (4, (0, 3)),
+        (4, (0, 1, 2, 3)),
+    ],
+)
+def test_tabular_model_missingness(
+    n_features: int, cols_with_missing: T.Tuple[int]
+):
+    n_classes = 3
+    model = rnnm_tab.TabularModel(
+        n_hidden=[n_features, 5, n_classes],
+        use_batch_norm=True,
+        do_impute=True,
+        cols_with_missing=cols_with_missing,
+    )
+    bs = 32
+    x = torch.randn(bs, n_features)
+    x[0, cols_with_missing] = float("inf")
     y = torch.randint(low=0, high=n_classes, size=(bs,))
     input = rnnm_data.XyBlock(x=x, y=y, batch_size=[bs])
     inference = model(input)
@@ -108,27 +141,79 @@ def test_highlevel_tabular_model_for_regression(
     assert torch.isfinite(loss)
 
 
-def test_impute_missingness():
-    n_features = 3
+@pytest.mark.parametrize(
+    "cols_with_missing,expected_output",
+    [
+        (
+            (0, 1, 2),
+            torch.tensor(
+                [[1, 2, 0, 0, 0, 1], [3, 0, 6, 0, 1, 0], [0, 5, 6, 1, 0, 0]],
+                dtype=torch.float32,
+            ),
+        ),
+        (
+            (0, 1),
+            torch.tensor(
+                [[1, 2, float("inf"), 0, 0], [3, 0, 6, 0, 1], [0, 5, 6, 1, 0]],
+                dtype=torch.float32,
+            ),
+        ),
+        (
+            (0,),
+            torch.tensor(
+                [
+                    [1, 2, float("inf"), 0],
+                    [3, float("inf"), 6, 0],
+                    [0, 5, 6, 1],
+                ],
+                dtype=torch.float32,
+            ),
+        ),
+        (
+            (1,),
+            torch.tensor(
+                [
+                    [1, 2, float("inf"), 0],
+                    [3, 0, 6, 1],
+                    [float("inf"), 5, 6, 0],
+                ],
+                dtype=torch.float32,
+            ),
+        ),
+        (
+            (2,),
+            torch.tensor(
+                [
+                    [1, 2, 0, 1],
+                    [3, float("inf"), 6, 0],
+                    [float("inf"), 5, 6, 0],
+                ],
+                dtype=torch.float32,
+            ),
+        ),
+    ],
+)
+def test_impute_missingness(
+    cols_with_missing: T.Tuple[int], expected_output: torch.Tensor
+):
+    n_features = len(cols_with_missing)
     imputer = rnnm_tab.ImputeMissingness(
-        n_features, bias_source=rnnm_tab.BiasSources.zero
+        cols_with_missing=cols_with_missing,
+        bias_source=rnnm_tab.BiasSources.zero,
     )
 
     X = torch.tensor(
         [[1, 2, float("inf")], [3, float("inf"), 6], [float("inf"), 5, 6]],
         dtype=torch.float32,
     )
-    expected_output = torch.tensor(
-        [[1, 2, 0, 0, 0, 1], [3, 0, 6, 0, 1, 0], [0, 5, 6, 1, 0, 0]],
-        dtype=torch.float32,
-    )
 
     output = imputer(X)
 
+    assert output.shape == (3, X.shape[1] + n_features)
     assert torch.allclose(output, expected_output)
-    assert output.shape == (3, 6)
-    assert torch.isfinite(output[:, :n_features]).all()
-    assert torch.isfinite(output).all()
+    assert torch.isfinite(output[:, cols_with_missing]).all()
+    if n_features == X.shape[1]:
+        assert torch.isfinite(output).all()
 
 
 @pytest.mark.parametrize("value", [float("inf"), -1])
@@ -151,6 +236,25 @@ def test_make_missing(value):
     assert np.isclose(np.sum(mask) / X.size, p_missing, atol=0.01)
 
 
+@pytest.mark.parametrize("cols", [(0,), (1, 2), (0, 1, 2, 3, 4, 5, 6, 7, 8, 9)])
+def test_make_missing_given_cols(cols: T.Tuple[int]):
+    X = np.random.randn(1_000, 10)
+    p_missing = 0.1
+
+    X_miss, mask = rnnm_tab.make_missing(
+        X, float("inf"), p_missing, cols_with_missing=cols
+    )
+
+    assert X_miss.shape == X.shape
+    assert mask.shape == (X.shape[0], len(cols))
+
+    missinginess = np.logical_not(np.isfinite(X_miss)).any(axis=0)
+    assert missinginess[np.array(cols)].all()
+    other_cols = [i for i in list(range(X.shape[1])) if i not in cols]
+    if len(other_cols) > 0:
+        assert not missinginess[np.array(other_cols)].any()
+
+
 @pytest.mark.parametrize(
     "bias_source", [rnnm_tab.BiasSources.zero, rnnm_tab.BiasSources.normal]
 )
@@ -159,6 +263,7 @@ def test_highlevel_tabular_model_for_classification_with_missingness(
 ):
     n_classes = 2
     n_features = 5
+    cols_with_missing = (0, 2)
 
     model = rnnm_tab.TabularModelClassification(
         n_features=n_features,
@@ -167,10 +272,14 @@ def test_highlevel_tabular_model_for_classification_with_missingness(
         use_batch_norm=False,
         do_impute=True,
         impute_bias_source=bias_source,
+        cols_with_missing=cols_with_missing,
     )
     bs = 32
     x = np.random.randn(bs, n_features)
-    x, _ = rnnm_tab.make_missing_numerical(x, p_missing=0.5)
+
+    x, _ = rnnm_tab.make_missing_numerical(
+        x, p_missing=0.5, cols_with_missing=cols_with_missing
+    )
     x = torch.from_numpy(x).float()
     y = torch.randint(low=0, high=n_classes, size=(bs,))
     input = rnnm_data.XyBlock(x=x, y=y, batch_size=[bs])
@@ -193,6 +302,7 @@ def test_highlevel_tabular_model_for_regression_with_missingness(
     n_features = 5
     mean = 0.0
     std = 1.0
+    cols_with_missing = (0, 2)
 
     model = rnnm_tab.TabularModelRegression(
         n_features=n_features,
@@ -202,11 +312,14 @@ def test_highlevel_tabular_model_for_regression_with_missingness(
         use_batch_norm=False,
         do_impute=True,
         impute_bias_source=bias_source,
+        cols_with_missing=cols_with_missing,
     )
 
     bs = 32
     x = np.random.randn(bs, n_features)
-    x, _ = rnnm_tab.make_missing_numerical(x, p_missing=0.5)
+    x, _ = rnnm_tab.make_missing_numerical(
+        x, p_missing=0.5, cols_with_missing=cols_with_missing
+    )
     x = torch.from_numpy(x).float()
     y = torch.randn(size=(bs,))
     input = rnnm_data.XyBlock(x=x, y=y, batch_size=[bs])
