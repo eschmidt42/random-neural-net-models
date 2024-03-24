@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import pandas as pd
 import torch.nn as nn
 import typing as T
 import torch
@@ -355,3 +356,23 @@ class TabularModelNumericalAndCategorical(nn.Module):
         )
         x = torch.cat([x_num, x_emb], dim=1)
         return self.net(x)
+
+
+def make_string_series_to_int(
+    s: pd.Series,
+) -> T.Tuple[pd.Series, T.Dict[str, int]]:
+    map_cols_str2int = {val: i for i, val in enumerate(sorted(s.unique()))}
+    s_int = s.copy(deep=True)
+    s_int = s_int.map(map_cols_str2int)
+    return s_int, map_cols_str2int
+
+
+def make_string_columns_to_int(
+    df: pd.DataFrame, categorical_columns: T.Iterable[str]
+) -> T.Tuple[pd.DataFrame, T.Dict[str, T.Dict[str, int]]]:
+    df_int = df.copy(deep=True)
+    maps_str2int = {}
+    for col in categorical_columns:
+        df_int[col], maps_str2int[col] = make_string_series_to_int(df_int[col])
+
+    return df_int, maps_str2int

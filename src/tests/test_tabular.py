@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import pandas as pd
 import torch
 import pytest
 import random_neural_net_models.tabular as rnnm_tab
@@ -331,3 +332,55 @@ def test_highlevel_tabular_model_for_regression_with_missingness(
     loss = loss_fn(inference, input)
 
     assert torch.isfinite(loss)
+
+
+@pytest.mark.parametrize(
+    "s, expected_output, expected_mapping",
+    [
+        (
+            pd.Series(["a", "b", "c", "d"]),
+            pd.Series([0, 1, 2, 3]),
+            {"a": 0, "b": 1, "c": 2, "d": 3},
+        ),
+        (
+            pd.Series(["a", "b", "a", "c", "b"]),
+            pd.Series([0, 1, 0, 2, 1]),
+            {"a": 0, "b": 1, "c": 2},
+        ),
+    ],
+)
+def test_make_string_series_to_int(s, expected_output, expected_mapping):
+    output, mapping = rnnm_tab.make_string_series_to_int(s)
+    assert output.equals(expected_output)
+    assert mapping == expected_mapping
+
+
+def test_make_string_columns_to_int():
+    df = pd.DataFrame(
+        {
+            "col1": ["a", "b", "c"],
+            "col2": ["x", "y", "z"],
+            "col3": [0.1, 0.2, -0.9],
+        }
+    )
+    categorical_columns = ["col1", "col2"]
+
+    df_int, maps_str2int = rnnm_tab.make_string_columns_to_int(
+        df, categorical_columns
+    )
+
+    assert isinstance(df_int, pd.DataFrame)
+    assert isinstance(maps_str2int, dict)
+
+    assert df_int.shape == (3, 3)
+    assert df_int["col1"].dtype == int
+    assert df_int["col2"].dtype == int
+
+    assert df_int["col1"].tolist() == [0, 1, 2]
+    assert df_int["col2"].tolist() == [0, 1, 2]
+    assert df_int["col3"].equals(df["col3"])
+
+    assert maps_str2int == {
+        "col1": {"a": 0, "b": 1, "c": 2},
+        "col2": {"x": 0, "y": 1, "z": 2},
+    }
