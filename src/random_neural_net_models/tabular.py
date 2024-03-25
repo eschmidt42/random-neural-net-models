@@ -263,8 +263,8 @@ def calc_categorical_feature_embedding_dimension(n_cat: int) -> int:
 class TabularModelNumericalAndCategorical(nn.Module):
     def __init__(
         self,
-        n_hidden: T.List[int],
-        n_categories_per_column: T.List[int],
+        n_hidden: T.Tuple[int],
+        n_categories_per_column: T.Tuple[int],
         use_batch_norm: bool,
         do_impute: bool = False,
         impute_bias_source: BiasSources = BiasSources.zero,
@@ -326,6 +326,9 @@ class TabularModelNumericalAndCategorical(nn.Module):
         n_emb_in = sum(self.emb_dims)
 
         n_hidden[0] = n_num_in + n_emb_in
+        self.n_num_in = n_num_in
+        self.n_emb_in = n_emb_in
+        self.n_hidden = n_hidden
 
         layers = []
         for i, (n_in, n_out) in enumerate(zip(n_hidden[:-1], n_hidden[1:])):

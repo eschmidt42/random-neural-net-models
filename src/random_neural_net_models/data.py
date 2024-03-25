@@ -109,12 +109,91 @@ class NumpyNumCatTrainingDataset(Dataset):
         return x_num, x_cat, y
 
 
+class NumpyNumCatTrainingDatasetXOnly(Dataset):
+    # negative values in X_categorical indicate missingness, because X_categorical is expected to be of type int
+
+    X_num: np.ndarray
+    X_cat: np.ndarray
+    n: int
+    cat_maps: T.Dict[int, T.Dict[int, int]]
+    inv_cat_maps: T.Dict[int, T.Dict[int, int]]
+    cat_fallbacks: T.Dict[int, int]
+
+    def __init__(self, X_numerical: np.ndarray, X_categorical):
+        self.X_num = X_numerical
+        self.X_cat = X_categorical
+        self.n = len(X_numerical)
+
+        if X_numerical.shape[0] != X_categorical.shape[0]:
+            raise ValueError(
+                f"X_numerical and X_categorical must have same length, got {X_numerical.shape[0]} and {X_categorical.shape[0]}"
+            )
+
+        self._create_cat_id_maps()
+
+    def _create_cat_id_maps(self):
+        self.cat_maps = {}
+        self.cat_fallbacks = {}
+        self.inv_cat_maps = {}
+
+        for col_i, col_vals in enumerate(self.X_cat.T):
+            unique_categories = set(v for v in col_vals if v >= 0)
+            _map = {val: _id for _id, val in enumerate(unique_categories)}
+            self.cat_maps[col_i] = _map
+            _inv_map = {_id: val for _id, val in _map.items()}
+            self.cat_fallbacks[col_i] = len(_map)
+            self.inv_cat_maps[col_i] = _inv_map
+
+    def __len__(self):
+        return self.n
+
+    def _map_cats_to_ids(self, x_cat: np.ndarray) -> np.ndarray:
+        return np.array(
+            [
+                [
+                    self.cat_maps[i].get(v, self.cat_fallbacks[i])
+                    for i, v in enumerate(x_cat)
+                ]
+            ],
+            dtype=np.integer,
+        )
+
+    def __getitem__(self, idx: int) -> T.Tuple[torch.Tensor, torch.LongTensor]:
+        x_num = torch.from_numpy(self.X_num[[idx], :]).float()
+        x_cat = torch.from_numpy(
+            self._map_cats_to_ids(self.X_cat[idx, :])
+        ).long()
+
+        return x_num, x_cat
+
+
 def calc_n_categories_per_column(X_cat: np.ndarray) -> T.List[int]:
     # X_cat is expected to be an array of integers.
     # hence only values >= 0 count as a category and negative values indicate missingness
     unique_cats = [np.unique(X_cat[:, i]) for i in range(X_cat.shape[1])]
     unique_cats = [[v for v in col_vals if v >= 0] for col_vals in unique_cats]
     return [len(col_vals) for col_vals in unique_cats]
+
+
+def get_index_ranges_from_n_cats_per_col(
+    n_categories_per_column: T.Iterable[int],
+) -> T.List[T.Tuple[int]]:
+    if len(n_categories_per_column) == 0:
+        msg = f"{n_categories_per_column=} must have at least one element"
+        raise ValueError(msg)
+    if any(v < 1 for v in n_categories_per_column):
+        msg = (
+            f"{n_categories_per_column=} must have only elements greater than 0"
+        )
+        raise ValueError(msg)
+
+    index_ranges = []
+    offset = 0
+    for n_cats in n_categories_per_column:
+        _range = tuple(range(offset, offset + n_cats))
+        index_ranges.append(_range)
+        offset += n_cats
+    return index_ranges
 
 
 @tensorclass
@@ -190,9 +269,28 @@ class XBlock:
     x: torch.Tensor
 
 
-def collate_numpy_dataset_to_xblock(input: T.Tuple[torch.Tensor]) -> XBlock:
-    x = torch.concat(input).float()
+@tensorclass
+class XBlock_numcat:  # for separate numerical and categorical data in x
+    x_numerical: torch.Tensor
+    x_categorical: torch.LongTensor
+
+
+def collate_numpy_dataset_to_xblock(
+    input: torch.Tensor,
+) -> XBlock:
+    x = torch.stack([v[0] for v in input]).float()
+
     return XBlock(x=x, batch_size=[x.shape[0]])
+
+
+def collate_numpy_numcat_dataset_to_xblock(
+    input: T.Tuple[torch.Tensor, torch.LongTensor],
+) -> XBlock_numcat:
+    x_num = torch.concat([v[0] for v in input]).float()
+    x_cat = torch.concat([v[1] for v in input]).long()
+    return XBlock_numcat(
+        x_numerical=x_num, x_categorical=x_cat, batch_size=[x_num.shape[0]]
+    )
 
 
 # ============================================

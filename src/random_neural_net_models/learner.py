@@ -252,7 +252,7 @@ class Learner:
     def predict(
         self,
         dataloader: DataLoader,
-        component: int = None,
+        component: T.Union[int, T.Tuple[int]] = None,
         return_inputs: bool = False,
     ) -> torch.Tensor:
         self.model.eval()
@@ -274,15 +274,25 @@ class Learner:
                 f"only using {component=} of each model output (e.g. for VAE only the image)"
             )
             inference = [v[component] for v in inference]
+        elif isinstance(component, (tuple, list)):
+            logger.info(
+                f"only using {component=} of each model output (e.g. for VAE only the image)"
+            )
+            inference = [[v[c] for v in inference] for c in component]
 
-        inference = torch.concat(inference).cpu()
+        if isinstance(component, int) or component is None:
+            inference = torch.concat(inference).cpu()
+
+        elif isinstance(component, (tuple, list)):
+            inference = [torch.concat(inf).cpu() for inf in inference]
+
         if return_inputs:
             return inference, torch.cat(inputs)
         return inference
 
     def save(self):
         if self.save_dir is None:
-            msg = f"In order to perform lr search `save_dir` needs to be passed to learner to write the model to and load backups from"
+            msg = "In order to perform lr search `save_dir` needs to be passed to learner to write the model to and load backups from"
             raise ValueError(msg)
         if not self.save_dir.exists():
             msg = f"The path {self.save_dir=} does not exist"
@@ -300,14 +310,14 @@ class Learner:
             "optimizer": self.optimizer.state_dict(),
         }
         torch.save(state, self.learner_path, pickle_protocol=2)
-        logger.info(f"done writing")
+        logger.info("done writing")
 
     def load(self):
         logger.info(f"reading learner from {self.learner_path=}")
         state = torch.load(self.learner_path)
         self.model.load_state_dict(state["model"])
         self.optimizer.load_state_dict(state["optimizer"])
-        logger.info(f"done reading")
+        logger.info("done reading")
 
 
 @dataclass
@@ -342,7 +352,7 @@ class TrainLossCallback(Callback):
             self.losses[-1].loss_valid = loss_valid
 
     def get_losses(self) -> pd.DataFrame:
-        return pd.DataFrame([asdict(l) for l in self.losses])
+        return pd.DataFrame([asdict(loss) for loss in self.losses])
 
     def get_losses_valid(self) -> pd.DataFrame:
         return self.get_losses().loc[self.get_losses()["loss_valid"].notna(), :]
@@ -651,7 +661,7 @@ class LRFinderCallback(Callback):
         learner.learner_path.unlink()
 
     def get_losses(self) -> pd.DataFrame:
-        return pd.DataFrame([asdict(l) for l in self.losses])
+        return pd.DataFrame([asdict(loss) for loss in self.losses])
 
     def plot(
         self,
