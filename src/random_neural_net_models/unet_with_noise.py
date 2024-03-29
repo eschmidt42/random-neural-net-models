@@ -8,10 +8,15 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.nn.modules.loss as torch_loss
 import tqdm
 from einops import rearrange
 from einops.layers.torch import Rearrange
+from tensordict import tensorclass
+from torch.utils.data import DataLoader
 
+import random_neural_net_models.data as rnnm_data
+import random_neural_net_models.learner as rnnm_learner
 import random_neural_net_models.telemetry as telemetry
 import random_neural_net_models.unet as unet
 import random_neural_net_models.utils as utils
@@ -28,16 +33,68 @@ def get_noise_level_embedding(
     noise_levels_ = rearrange(noise_levels, "b -> b 1")
     exponent = rearrange(exponent, "d -> 1 d")
 
-    emb = noise_levels_.double() * exponent.exp()  # (batch_size, emb_dim//2)
+    emb = noise_levels_ * exponent.exp()  # (batch_size, emb_dim//2)
 
     emb = torch.cat([emb.sin(), emb.cos()], dim=-1)  # (batch_size, emb_dim)
 
     if emb_dim % 2 == 1:
-        return F.pad(emb, (0, 1, 0, 0))
+        return F.pad(emb, (0, 1, 0, 0)).float()
     else:
-        return emb
+        return emb.float()
 
 
+class Attention2D(nn.Module):
+    # based on https://github.com/fastai/course22p2/blob/master/nbs/28_diffusion-attn-cond.ipynb
+    def __init__(self, n_cnn_channels: int, n_channels_per_head: int):
+        super().__init__()
+        assert (
+            n_channels_per_head % n_channels_per_head == 0
+        ), f"{n_channels_per_head=} must be a multiple of {n_cnn_channels=}"
+        self.n_heads = n_cnn_channels // n_channels_per_head
+        logger.info(
+            f"Attention for {n_cnn_channels=} with {n_channels_per_head=} -> {self.n_heads=}"
+        )
+        self.scale = math.sqrt(n_cnn_channels / self.n_heads)
+        self.norm = nn.LayerNorm(n_cnn_channels)
+        self.qkv = nn.Linear(n_cnn_channels, n_cnn_channels * 3)
+        self.proj = nn.Linear(n_cnn_channels, n_cnn_channels)
+
+    def forward(self, X: torch.Tensor) -> torch.Tensor:
+        # TODO: replace @ with einops.einsum
+        _, _, h, w = X.shape
+
+        # (h d) = latent dim * 3
+        X = rearrange(X, "batch channels h w -> batch channels (h w)")
+        # X = rearrange(X, 'batch channels (heads d) -> (batch heads) channels d', h=self.nheads)
+
+        X = rearrange(X, "batch channels hw -> batch hw channels")
+        X = self.norm(X)
+        X = self.qkv(X)
+        X = rearrange(
+            X,
+            "batch hw (heads latent) -> (batch heads) hw latent",
+            heads=self.n_heads,
+        )
+        Q, K, V = torch.chunk(X, 3, dim=-1)  # each "(batch heads) hw latent"
+        Ktrans = rearrange(
+            K,
+            "(batch heads) hw latent -> (batch heads) latent hw",
+            heads=self.n_heads,
+        )
+        S = (Q @ Ktrans) / self.scale  # "(batch heads) hw hw"
+        X = S.softmax(dim=-1) @ V  # "(batch heads) hw latent"
+        X = rearrange(
+            X,
+            "(batch heads) hw latent -> batch hw (heads latent)",
+            heads=self.n_heads,
+        )
+        X = self.proj(X)  # "batch hw (heads latent)"
+        X = rearrange(X, "batch (h w) channels -> batch channels h w", h=h, w=w)
+
+        return X
+
+
+# TODO - CONTINUE HERE: add Attention2D to ResBlock
 class ResBlock(nn.Module):
     def __init__(
         self,
@@ -46,6 +103,7 @@ class ResBlock(nn.Module):
         num_emb: int,
         stride: int = 1,
         ks: int = 3,
+        n_channels_per_head: int = 0,
     ):
         super().__init__()
 
@@ -83,7 +141,14 @@ class ResBlock(nn.Module):
                 num_features_in, num_features_out, kernel_size=1, stride=1
             )
         )
+        self.attention = (
+            nn.Identity()
+            if n_channels_per_head == 0
+            else Attention2D(num_features_out, n_channels_per_head)
+        )
 
+    # TODO: implement x + self.attention(x) at the end of the function
+    # using transformer.py's AttentionBlock
     def forward(self, x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         emb = self.emb_proj(t)
 
@@ -94,7 +159,10 @@ class ResBlock(nn.Module):
         x_conv = self.conv2(x_conv)
 
         x_id = self.idconv(x)
-        return x_conv + x_id
+        x_skip1 = x_conv + x_id
+        x_att = self.attention(x_skip1)
+        x_skip2 = x_skip1 + x_att
+        return x_skip2
 
 
 class SavedResBlock(unet.SaveModule, ResBlock):
@@ -109,6 +177,7 @@ class DownBlock(nn.Module):
         num_emb: int,
         add_down: bool = True,
         num_resnet_layers: int = 1,
+        n_channels_per_head: int = 0,
     ):
         """Sequence of resnet blocks with a downsample at the end, see stride."""
         super().__init__()
@@ -119,6 +188,7 @@ class DownBlock(nn.Module):
             num_features_out,
             num_emb,
             num_resnet_layers=num_resnet_layers,
+            n_channels_per_head=n_channels_per_head,
         )
 
         self.setup_downscaling(num_features_out)
@@ -129,17 +199,26 @@ class DownBlock(nn.Module):
         num_features_out: int,
         num_emb: int,
         num_resnet_layers: int = 2,
+        n_channels_per_head: int = 0,
     ):
         self.res_blocks = nn.ModuleList()
         for i in range(num_resnet_layers - 1):
             n_in = num_features_in if i == 0 else num_features_out
-            self.res_blocks.append(ResBlock(n_in, num_features_out, num_emb))
+            self.res_blocks.append(
+                ResBlock(
+                    n_in,
+                    num_features_out,
+                    num_emb,
+                    n_channels_per_head=n_channels_per_head,
+                )
+            )
 
         self.res_blocks.append(
             SavedResBlock(
                 num_features_in=num_features_out,
                 num_features_out=num_features_out,
                 num_emb=num_emb,
+                n_channels_per_head=n_channels_per_head,
             )
         )
 
@@ -163,7 +242,11 @@ class DownBlock(nn.Module):
 
 class UNetDown(nn.Module):
     def __init__(
-        self, num_features: T.Tuple[int], num_layers: int, num_emb: int
+        self,
+        num_features: T.Tuple[int],
+        num_layers: int,
+        num_emb: int,
+        n_channels_per_head: int = 0,
     ) -> None:
         super().__init__()
 
@@ -179,6 +262,7 @@ class UNetDown(nn.Module):
                     num_emb,
                     add_down=add_down,
                     num_resnet_layers=num_layers,
+                    n_channels_per_head=n_channels_per_head,
                 )
                 for n_in, n_out, add_down in zip(n_ins, n_outs, add_downs)
             ]
@@ -189,7 +273,7 @@ class UNetDown(nn.Module):
             x = down_block(x, t)
         return x
 
-    def __iter__(self) -> torch.Tensor:
+    def __iter__(self) -> T.Iterator[torch.Tensor]:
         for down_block in self.down_blocks:
             yield down_block.saved_output
 
@@ -203,6 +287,7 @@ class UpBlock(nn.Module):
         num_emb: int,
         add_up: bool = True,
         num_resnet_layers: int = 2,
+        n_channels_per_head: int = 0,
     ):
         super().__init__()
         self.add_up = add_up
@@ -212,6 +297,7 @@ class UpBlock(nn.Module):
             num_features_out,
             num_emb,
             num_resnet_layers=num_resnet_layers,
+            n_channels_per_head=n_channels_per_head,
         )
 
         self.setup_upscaling(num_features_out)
@@ -223,6 +309,7 @@ class UpBlock(nn.Module):
         num_output_features: int,
         num_emb: int,
         num_resnet_layers: int = 2,
+        n_channels_per_head: int = 0,
     ):
         self.res_blocks = nn.ModuleList()
         n_out = num_output_features
@@ -237,7 +324,14 @@ class UpBlock(nn.Module):
             if i == 0:
                 n_in += num_features_in
 
-            self.res_blocks.append(ResBlock(n_in, n_out, num_emb))
+            self.res_blocks.append(
+                ResBlock(
+                    n_in,
+                    n_out,
+                    num_emb,
+                    n_channels_per_head=n_channels_per_head,
+                )
+            )
 
     def setup_upscaling(self, num_features_out: int):
         if self.add_up:
@@ -270,6 +364,7 @@ class UNetUp(nn.Module):
         self,
         downs: UNetDown,
         num_emb: int,
+        n_channels_per_head: int = 0,
     ) -> None:
         super().__init__()
 
@@ -318,6 +413,7 @@ class UNetUp(nn.Module):
                 num_emb,
                 add_up=add_up,
                 num_resnet_layers=num_resnet_layers,
+                n_channels_per_head=n_channels_per_head,
             )
             self.ups.append(up_block)
 
@@ -337,6 +433,7 @@ class UNetModel(nn.Module):
         list_num_features: T.Tuple[int] = (8, 16),
         num_layers: int = 2,
         max_emb_period: int = 10000,
+        n_channels_per_head: int = 0,  # 0 = no attention
     ):
         super().__init__()
         if in_channels != out_channels:
@@ -352,14 +449,24 @@ class UNetModel(nn.Module):
         self.setup_input(in_channels, list_num_features)
 
         self.downs = UNetDown(
-            list_num_features, num_layers, self.n_noise_level_emb
+            list_num_features,
+            num_layers,
+            self.n_noise_level_emb,
+            n_channels_per_head=n_channels_per_head,
         )
 
         self.mid_block = ResBlock(
-            list_num_features[-1], list_num_features[-1], self.n_noise_level_emb
+            list_num_features[-1],
+            list_num_features[-1],
+            self.n_noise_level_emb,
+            n_channels_per_head=0,
         )
 
-        self.ups = UNetUp(self.downs, self.n_noise_level_emb)
+        self.ups = UNetUp(
+            self.downs,
+            self.n_noise_level_emb,
+            n_channels_per_head=n_channels_per_head,
+        )
 
         self.setup_output(list_num_features, out_channels)
 
@@ -427,7 +534,7 @@ class UNetModel(nn.Module):
             self.n_noise_level_input,
             max_period=self.max_emb_period,
         )
-        noise_emb = self.emb_mlp(noise_emb)
+        noise_emb = self.emb_mlp(noise_emb.float())
 
         # down projections
         x = self.downs(x, noise_emb)
@@ -447,7 +554,7 @@ class UNetModel(nn.Module):
 
 
 def list_of_tuples_to_tensors(
-    batch: T.List[T.Tuple[torch.Tensor, int]]
+    batch: T.List[T.Tuple[torch.Tensor, int]],
 ) -> T.Tuple[torch.Tensor, torch.Tensor]:
     images, labels = zip(*batch)
     images = torch.stack(images)
@@ -459,25 +566,25 @@ SIG_DATA = 0.66
 
 
 def get_cs(
-    sig: torch.Tensor,
+    noise_level: torch.Tensor,
 ) -> T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     # TODO: wtf is happening here?
-    totvar = sig**2 + SIG_DATA**2
+    totvar = noise_level**2 + SIG_DATA**2
     c_skip = SIG_DATA**2 / totvar
-    c_out = sig * SIG_DATA / totvar.sqrt()
+    c_out = noise_level * SIG_DATA / totvar.sqrt()
     c_in = 1 / totvar.sqrt()
     return c_skip, c_out, c_in
 
 
-def draw_sig_from_noise_prior(n: int) -> torch.Tensor:
+def draw_noise_level_from_noise_prior(n: int) -> torch.Tensor:
     "Draws noise level (prior) from a log normal distribution"
-    sig = torch.randn(n)
-    sig = 1.2 * sig - 1.2
-    sig = sig.exp()
-    return sig
+    noise_level = torch.randn(n)
+    noise_level = 1.2 * noise_level - 1.2
+    noise_level = noise_level.exp()
+    return noise_level
 
 
-def draw_img_noise_given_sig(
+def draw_img_noise_given_noise_level(
     sig: torch.Tensor,
     images: torch.Tensor = None,
     images_shape: T.Tuple[int, int, int] = None,
@@ -486,9 +593,9 @@ def draw_img_noise_given_sig(
     if images is not None:
         images_shape = images.shape
 
-    noise = torch.randn(images_shape)
-    noise = noise * sig
-    return noise
+    img_noise = torch.randn(images_shape)
+    img_noise = img_noise * sig
+    return img_noise
 
 
 def fudge_original_images(images: torch.Tensor) -> torch.Tensor:
@@ -496,7 +603,7 @@ def fudge_original_images(images: torch.Tensor) -> torch.Tensor:
 
 
 def apply_noise(
-    batch: T.List[T.Tuple[torch.Tensor, int]]
+    batch: T.List[T.Tuple[torch.Tensor, int]],
 ) -> T.Tuple[T.Tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
     "Applies noise to the input image and returns the noisy image, the noise level and the de-noised image"
 
@@ -505,28 +612,55 @@ def apply_noise(
     orig_images = fudge_original_images(orig_images)
 
     # drawing noise level (prior) from a log normal distribution
-    sig = draw_sig_from_noise_prior(orig_images.shape[0])
-    sig = sig.reshape(-1, 1, 1)
+    noise_level = draw_noise_level_from_noise_prior(orig_images.shape[0])
+    noise_level = noise_level.reshape(-1, 1, 1)
 
-    c_skip, c_out, c_in = get_cs(sig)
+    c_skip, c_out, c_in = get_cs(noise_level)
 
     # adding noise to the image
-    noise = draw_img_noise_given_sig(sig, images=orig_images)
+    noise = draw_img_noise_given_noise_level(noise_level, images=orig_images)
     noisy_images = orig_images + noise
 
     target_noise = (orig_images - c_skip * noisy_images) / c_out
     noisy_images = noisy_images * c_in
 
-    sig = sig.squeeze()
+    noise_level = noise_level.squeeze()
 
-    return (noisy_images, sig), target_noise
+    return (noisy_images, noise_level), target_noise
+
+
+@tensorclass
+class MNISTNoisyDataTrain:
+    noisy_image: torch.Tensor
+    noise_level: torch.Tensor
+    target_noise: torch.Tensor
+
+
+def mnist_noisy_collate_train(
+    batch: T.List[T.Tuple[torch.Tensor, int]],
+) -> MNISTNoisyDataTrain:
+    (noisy_images, noise_level), target_noise = apply_noise(batch)
+
+    return MNISTNoisyDataTrain(
+        noisy_images, noise_level, target_noise, batch_size=[len(noisy_images)]
+    )
+
+
+class UNetModelTensordict(unet.UNetModel):
+    def forward(self, input: MNISTNoisyDataTrain) -> torch.Tensor:
+        return super().forward(input.noisy_image)
+
+
+class NoisyUNetModelTensordict(UNetModel):
+    def forward(self, input: MNISTNoisyDataTrain) -> torch.Tensor:
+        return super().forward(input.noisy_image, input.noise_level)
 
 
 def get_denoised_images(
-    noisy_images: torch.Tensor, noises: torch.Tensor, sig: torch.Tensor
+    noisy_images: torch.Tensor, noises: torch.Tensor, noise_level: torch.Tensor
 ) -> torch.Tensor:
     "Returns the de-noised images given the noisy images, noise and the noise level (sig)"
-    c_skip, c_out, c_in = get_cs(sig)
+    c_skip, c_out, c_in = get_cs(noise_level)
     denoised_images = noises * c_out + (noisy_images / c_in) * c_skip
     return denoised_images
 
@@ -578,23 +712,52 @@ def compare_input_noise_and_denoised_image(
 
 
 def denoise_with_model(
-    model: telemetry.ModelTelemetry, images: torch.Tensor, sigs: torch.Tensor
+    model: T.Union[telemetry.ModelTelemetry, rnnm_learner.Learner],
+    images: torch.Tensor,
+    noise_levels: torch.Tensor,
 ) -> T.Tuple[T.List[torch.Tensor], T.List[torch.Tensor]]:
     "Denoises an image with the model for a range of noise levels"
     noise_preds = []
     denoised_preds = []
-    for sig in tqdm.tqdm(sigs, total=len(sigs), desc="Sigmas"):
-        _sigs = sig.repeat(images.shape[0])
+    for noise_level in tqdm.tqdm(
+        noise_levels, total=len(noise_levels), desc="Sigmas"
+    ):
+        levels = noise_level.repeat(images.shape[0])
 
-        c_skip, c_out, c_in = get_cs(_sigs.reshape(-1, 1, 1))
+        c_skip, c_out, c_in = get_cs(levels.reshape(-1, 1, 1))
         images = images * c_in
 
-        pred_noise = model(images, _sigs)
+        if isinstance(model, telemetry.ModelTelemetry):
+            pred_noise = model(images, levels)
+        elif isinstance(model, rnnm_learner.Learner):
+            ds = rnnm_data.MNISTDatasetWithNoise(
+                images,
+                levels,
+            )
+            dl = DataLoader(
+                ds,
+                batch_size=len(images),
+                shuffle=False,
+                collate_fn=rnnm_data.collate_mnist_dataset_to_block_with_noise,
+            )
+            pred_noise = model.predict(dl)
+        else:
+            raise ValueError(f"Unexpected type for {model=}")
 
         images = get_denoised_images(
-            images, pred_noise, _sigs.reshape(-1, 1, 1)
+            images, pred_noise, levels.reshape(-1, 1, 1)
         )
 
         noise_preds.append(pred_noise.detach().cpu())
         denoised_preds.append(images.detach().cpu())
     return noise_preds, denoised_preds
+
+
+class MSELossMNISTNoisy(torch_loss.MSELoss):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def forward(
+        self, inference: torch.Tensor, input: MNISTNoisyDataTrain
+    ) -> torch.Tensor:
+        return super().forward(inference, input.target_noise)

@@ -3,24 +3,26 @@ SHELL = /bin/bash
 .PHONY: help
 help:
 	@echo "Commands:"
-	@echo "venv            : creates the virtual environment in .venv."
-	@echo "install         : install dependencies into virtual environment."
-	@echo "install-gh-test : install dependencies required in .github/workflows/test.yml."
-	@echo "compile         : update the environment requirements after changes to dependencies in requirements/*.in files."
-	@echo "compile-dev     : update the dev environment requirements after changes to requirements/dev.in."
-	@echo "compile-upgrade : upgrade the environment requirements."
-	@echo "update          : pip install new requriements into the virtual environment."
-	@echo "test            : run pytests."
-	@echo "bump-patch      : bump the patch version."
-	@echo "bump-minor      : bump the minor version."
+	@echo "venv               : creates the virtual environment in .venv."
+	@echo "install            : install dependencies into virtual environment."
+	@echo "install-gh-test    : install dependencies required in .github/workflows/test.yml."
+	@echo "compile            : update the environment requirements after changes to dependencies in requirements/*.in files."
+	@echo "compile-dev        : update the dev environment requirements after changes to requirements/dev.in."
+	@echo "compile-upgrade    : upgrade the environment requirements."
+	@echo "update             : pip install new requriements into the virtual environment."
+	@echo "test               : run pytests."
+	@echo "bump-patch         : bump the patch version."
+	@echo "bump-minor         : bump the minor version."
+	@echo "clean-requirements : remove the compiled requirements files."
+
 
 # create a virtual environment
 .PHONY: venv
 venv:
 	python3 -m venv .venv
 	source .venv/bin/activate && \
-	python3 -m pip install pip==23.1.2 setuptools==68.0.0 wheel==0.40.0 && \
-	pip install pip-tools==6.14.0
+	python3 -m pip install pip==23.3.2 setuptools==69.0.3 wheel==0.42.0 && \
+	pip install pip-tools==7.3.0
 
 # ==============================================================================
 # compile requirements
@@ -111,3 +113,11 @@ bump-patch:
 bump-minor:
 	source .venv/bin/activate && \
 	bumpver update --minor
+
+# ==============================================================================
+# clean
+# ==============================================================================
+
+.PHONY: clean-requirements
+clean-requirements:
+	rm -f ./requirements/*.txt

@@ -7,6 +7,7 @@ import torch.nn as nn
 import torchinfo
 from einops.layers.torch import Rearrange
 
+import random_neural_net_models.data as rnnm_data
 import random_neural_net_models.utils as utils
 
 logger = utils.get_logger("resnet.py")
@@ -79,5 +80,10 @@ class ResNet(nn.Module):
             self.add_dim, self.resblocks, self.flatten, self.lin, self.bn1
         )
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.net(x)
+
+
+class ResNet2(ResNet):
+    def forward(self, input: rnnm_data.MNISTBlockWithLabels) -> torch.Tensor:
+        return self.net(input.image)

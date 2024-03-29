@@ -5,27 +5,32 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.nn.modules.loss as torch_loss
 from einops import rearrange
 from einops.layers.torch import Rearrange
 from torch.utils.data import Dataset
 
+import random_neural_net_models.data as rnnm_data
 import random_neural_net_models.utils as utils
 
 logger = utils.get_logger("convolution_lecun1990.py")
 
 
 class DigitsDataset(Dataset):
-    def __init__(self, X: pd.DataFrame, y: pd.Series, edge: int = 28):
+    def __init__(
+        self, X: pd.DataFrame, y: pd.Series, edge: int = 28, f: float = 255.0
+    ):
         self.X = X
         self.y = y
         self.edge = edge
+        self.f = f
 
     def __len__(self):
         return len(self.y)
 
     def __getitem__(self, idx: int) -> T.Tuple[torch.Tensor, int]:
         img = (
-            torch.from_numpy(self.X.iloc[idx].values / 255.0)  # normalizing
+            torch.from_numpy(self.X.iloc[idx].values / self.f)  # normalizing
             .reshape(self.edge, self.edge)
             .double()
         )
@@ -65,6 +70,7 @@ class Conv2d(torch.nn.Module):
         padding: int = 0,
         dilation: int = 1,
         lecun_init: bool = True,
+        dtype=torch.double,
     ):
         super().__init__()
 
@@ -81,11 +87,11 @@ class Conv2d(torch.nn.Module):
             torch.empty(
                 n_in_channels * kernel_width * kernel_height,
                 n_out_channels,
-                dtype=torch.double,
+                dtype=dtype,
             )
         )
         self.bias = nn.Parameter(
-            torch.empty(1, n_out_channels, 1, 1, dtype=torch.double)
+            torch.empty(1, n_out_channels, 1, 1, dtype=dtype)
         )
 
         # self.bias = rearrange(self.bias, "out_channels -> 1 out_channels 1 1")
@@ -151,6 +157,7 @@ class Model(nn.Module):
         lecun_act: bool = True,
         A: float = 1.716,
         S: float = 2 / 3,
+        dtype=torch.double,
     ):
         super().__init__()
 
@@ -163,6 +170,7 @@ class Model(nn.Module):
             stride=2,
             padding=2,
             lecun_init=lecun_init,
+            dtype=dtype,
         )
         edge = edge // 2  # effect of stride
 
@@ -175,6 +183,7 @@ class Model(nn.Module):
             stride=2,
             padding=2,
             lecun_init=lecun_init,
+            dtype=dtype,
         )
         edge = edge // 2  # effect of stride
         self.lin1 = nn.Linear(edge * edge * 12, 30)
@@ -213,3 +222,8 @@ class Model(nn.Module):
 
     def forward(self, x: torch.Tensor):
         return self.net(x)
+
+
+class Model2(Model):
+    def forward(self, input: rnnm_data.MNISTBlockWithLabels):
+        return self.net(input.image)

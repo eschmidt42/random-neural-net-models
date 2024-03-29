@@ -2,6 +2,7 @@ pandas
 tabulate
 pydantic
 torch
+torchvision
 numpy
 matplotlib
 seaborn
@@ -10,3 +11,8 @@ rich
 tqdm
 einops
 transformers
+wandb
+tensordict
+diffusers[torch]
+tifffile
+regex
