@@ -1,5 +1,5 @@
 [bumpver]
-current_version = "0.2.0"
+current_version = "0.3.0"
 version_pattern = "MAJOR.MINOR.PATCH"
 
 [bumpver.file_patterns]
@@ -16,7 +16,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "random-neural-net-models"
-version = "0.2.0"
+version = "0.3.0"
 description = "My implementation of a random selection of artificial neural net based models."
 requires-python = ">=3.10"
 authors = [
