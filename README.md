@@ -46,3 +46,12 @@ See jupyter notebooks in [`nbs/`](https://github.com/eschmidt42/random-neural-ne
     * `mingpt_adder.ipynb`
 * transformer: `language-model.ipynb`
 * tokenization: `tokenization.ipynb`
+* tabular:
+  * `tabular-fastai-classification.ipynb`
+  * `tabular-fastai-classification-with-missingness.ipynb`
+  * `tabular-fastai-classification-with-missingness-and-categories.ipynb`
+  * `tabular-fastai-regression.ipynb`
+  * `tabular-fastai-regression-with-missingness.ipynb`
+  * `tabular-fastai-regression-with-missingness-and-categories.ipynb`
+  * `tabular-variational-auto-encoder.ipynb`
+  * `reusing-vae-for-classification.ipynb`
