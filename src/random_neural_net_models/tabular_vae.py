@@ -6,6 +6,7 @@ import torch
 import typing as T
 from tensordict import tensorclass
 import torch.nn.functional as F
+import copy
 
 
 @tensorclass
@@ -269,3 +270,33 @@ def transform_X_cat_probs_to_classes(
         [X_cat_probs[:, r].argmax(dim=1) for r in index_ranges], dim=1
     )
     return X_cat
+
+
+def freeze_weights(model: nn.Module):
+    for param in model.parameters():
+        param.requires_grad = False
+
+
+class TabularModelReusingTrainedEncoder(nn.Module):
+    def __init__(
+        self,
+        pretrained_encoder: rnnm_tab.TabularModel,
+        n_out: int,
+        use_batch_norm: bool,
+    ) -> None:
+        super().__init__()
+
+        self.pretrained_encoder = copy.deepcopy(pretrained_encoder)
+        freeze_weights(self.pretrained_encoder)
+
+        self.output_layer = rnnm_tab.Layer(
+            n_in=pretrained_encoder.n_hidden[-1],
+            n_out=n_out,
+            use_batch_norm=use_batch_norm,
+            use_activation=False,
+        )
+
+        self.net = nn.Sequential(self.pretrained_encoder, self.output_layer)
+
+    def forward(self, input: rnnm_data.XyBlock) -> torch.Tensor:
+        return self.net(input)

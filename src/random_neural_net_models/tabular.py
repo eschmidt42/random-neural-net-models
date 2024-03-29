@@ -112,6 +112,7 @@ class TabularModel(nn.Module):
                 n_hidden[0] + len((cols_with_missing))
             )  # because ImputeMissingness horizontally stacks boolean missingness flags
 
+        self.n_hidden = n_hidden
         for i, (n_in, n_out) in enumerate(zip(n_hidden[:-1], n_hidden[1:])):
             is_not_last = i <= len(n_hidden) - 3
 
