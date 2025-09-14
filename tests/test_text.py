@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 from pathlib import Path
-from einops import rearrange
-import pytest
 from unittest.mock import patch
+
+import pytest
 import torch
+from einops import rearrange
+
 import random_neural_net_models.text as rnnm_text
 import random_neural_net_models.tokenization as rnnm_tok
 
@@ -120,6 +122,6 @@ def test_collate_text_dataset_to_block():
         batch_size=[3],
     )
 
-    assert (
-        rnnm_text.collate_text_dataset_to_block(input_data) == expected_output
-    )
+    res = rnnm_text.collate_text_dataset_to_block(input_data)
+    assert (res.x == expected_output.x).all()
+    assert (res.y == expected_output.y).all()

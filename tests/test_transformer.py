@@ -135,8 +135,7 @@ def test_sanity_check_latent_dim_and_num_heads():
 
     # Test case where latent_dim is divisible by num_heads
     assert (
-        rnnm_trans.sanity_check_latent_dim_and_num_heads(latent_dim, num_heads)
-        is None
+        rnnm_trans.sanity_check_latent_dim_and_num_heads(latent_dim, num_heads) is None
     )
 
     # Test case where latent_dim is not divisible by num_heads
@@ -265,9 +264,7 @@ def test_TransformerEncoder(causal: bool):
         vocab_size=vocab_size,
     )
 
-    X_enc = torch.randint(
-        low=0, high=vocab_size, size=(batch_size, enc_n_tokens)
-    )
+    X_enc = torch.randint(low=0, high=vocab_size, size=(batch_size, enc_n_tokens))
 
     output = transformer_encoder(X_enc)
 
@@ -299,9 +296,7 @@ def test_TransformerDecoder(dec_n_tokens: int, causal: bool):
         vocab_size=vocab_size,
     )
 
-    X_dec = torch.randint(
-        low=0, high=vocab_size, size=(batch_size, dec_n_tokens)
-    )
+    X_dec = torch.randint(low=0, high=vocab_size, size=(batch_size, dec_n_tokens))
     X_enc = torch.randn(size=(batch_size, enc_n_tokens, enc_emb_dim))
 
     output = transformer_decoder(X_dec, X_enc)
@@ -334,12 +329,8 @@ def test_Transformer(dec_n_tokens: int, causal: int):
         vocab_size=vocab_size,
     )
 
-    X_dec = torch.randint(
-        low=0, high=vocab_size, size=(batch_size, dec_n_tokens)
-    )
-    X_enc = torch.randint(
-        low=0, high=vocab_size, size=(batch_size, enc_n_tokens)
-    )
+    X_dec = torch.randint(low=0, high=vocab_size, size=(batch_size, dec_n_tokens))
+    X_enc = torch.randint(low=0, high=vocab_size, size=(batch_size, enc_n_tokens))
 
     output = transformer(X_dec, X_enc)
 

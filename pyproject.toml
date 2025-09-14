@@ -1,23 +1,11 @@
-[bumpver]
-current_version = "0.3.0"
-version_pattern = "MAJOR.MINOR.PATCH"
-
-[bumpver.file_patterns]
-"src/random_neural_net_models/__init__.py" = [
-    '__version__ = "{version}"',
-]
-"pyproject.toml" = [
-    'version = "{version}"$',
-]
-
 [build-system]
-requires = ["setuptools>=65.0","wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "random-neural-net-models"
-version = "0.3.0"
-description = "My implementation of a random selection of artificial neural net based models."
+version = "0.3.1"
+description = "Implementation of a random selection of artificial neural net based models."
 requires-python = ">=3.10"
 authors = [
     {name = "eschmidt42", email="11818904+eschmidt42@users.noreply.github.com"}
@@ -25,87 +13,49 @@ authors = [
 readme = "README.md"
 license = { file = "LICENSE" }
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
-    "License :: OSI Approved :: BSD License",
+    "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11"
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13"
 ]
 keywords = ["neural-networks", "machine-learning", "deep-learning"]
-# dependencies = [] - now via requirements/*.in files
-
-[tool.ruff]
-# Exclude a variety of commonly ignored directories.
-exclude = [
-    ".bzr",
-    ".direnv",
-    ".eggs",
-    ".git",
-    ".git-rewrite",
-    ".hg",
-    ".ipynb_checkpoints",
-    ".mypy_cache",
-    ".nox",
-    ".pants.d",
-    ".pyenv",
-    ".pytest_cache",
-    ".pytype",
-    ".ruff_cache",
-    ".svn",
-    ".tox",
-    ".venv",
-    ".vscode",
-    "__pypackages__",
-    "_build",
-    "buck-out",
-    "build",
-    "dist",
-    "node_modules",
-    "site-packages",
-    "venv",
+dependencies = [
+    "pandas",
+    "tabulate",
+    "pydantic",
+    "torch",
+    "torchvision",
+    "numpy",
+    "matplotlib",
+    "seaborn",
+    "scikit-learn",
+    "rich",
+    "tqdm",
+    "einops",
+    "transformers",
+    "wandb",
+    "tensordict",
+    "diffusers[torch]",
+    "tifffile",
+    "regex"
 ]
 
-# Same as Black.
-line-length = 80
-indent-width = 4
+[project.urls]
+Homepage = "https://github.com/eschmidt42/random-neural-net-models"
+# Documentation = "https://eschmidt42.github.io/bundestag/"
+Repository = "https://github.com/eschmidt42/random-neural-net-models"
+Issues = "https://github.com/eschmidt42/random-neural-net-models/issues"
 
-# Assume Python 3.11
-target-version = "py311"
-
-[tool.ruff.lint]
-# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
-select = ["E4", "E7", "E9", "F"]
-ignore = []
-
-# Allow fix for all enabled rules (when `--fix`) is provided.
-fixable = ["ALL"]
-unfixable = []
-
-# Allow unused variables when underscore-prefixed.
-dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
-
-[tool.ruff.format]
-# Like Black, use double quotes for strings.
-quote-style = "double"
-
-# Like Black, indent with spaces, rather than tabs.
-indent-style = "space"
-
-# Like Black, respect magic trailing commas.
-skip-magic-trailing-comma = false
-
-# Like Black, automatically detect the appropriate line ending.
-line-ending = "auto"
-
-[tool.setuptools.packages.find]
-where = ["src"]  # list of folders that contain the packages (["."] by default)
-include = ["random_neural_net_models"]  # package names should match these glob patterns (["*"] by default)
-exclude = ["tests"]  # exclude packages matching these glob patterns (empty by default)
-namespaces = false  # to disable scanning PEP 420 namespaces (true by default)
-
-[tool.pytest.ini_options]
-pythonpath = ["src/random_neural_net_models"]
-testpaths = ["src/tests"]
-python_files = ["test_*.py"]
-markers = [
-    "slow" # mark test as slow
+[dependency-groups]
+dev = [
+    "pre-commit",
+    "jupyterlab",
+    "jupyter-contrib-nbextensions",
+    "ipywidgets",
+    "torchinfo",
+    "line_profiler"
+]
+tests = [
+    "pytest","pytest-cov", "coverage", "pip-audit"
 ]

@@ -35,9 +35,7 @@ def test_mingpt_sort():
     trainer.run()
 
     n = train_dataset.length  # naugy direct access shrug
-    _input = torch.tensor([[0, 0, 2, 1, 0, 1]], dtype=torch.long).to(
-        trainer.device
-    )
+    _input = torch.tensor([[0, 0, 2, 1, 0, 1]], dtype=torch.long).to(trainer.device)
 
     with torch.no_grad():
         _inference = model.generate(_input, n, do_sample=False)
@@ -52,9 +50,7 @@ def test_mingpt_sort():
 def test_mingpt_adder():
     data_config = adder.DataConfig(ndigit=2)
     # construct train and test datasets
-    train_dataset = adder.AdditionDataset(
-        data_config, split=gpt_utils.SETS.train
-    )
+    train_dataset = adder.AdditionDataset(data_config, split=gpt_utils.SETS.train)
     test_dataset = adder.AdditionDataset(data_config, split=gpt_utils.SETS.test)
 
     config = adder.get_config(
@@ -119,9 +115,7 @@ def test_mingpt_char():
     # inference
     n_new_tokens = 30
     for x_int, y_int in train_dataset:
-        pred_int = model.generate(
-            x_int.unsqueeze(0), n_new_tokens, do_sample=False
-        )
+        pred_int = model.generate(x_int.unsqueeze(0), n_new_tokens, do_sample=False)
         break
 
     # generated output is as expected

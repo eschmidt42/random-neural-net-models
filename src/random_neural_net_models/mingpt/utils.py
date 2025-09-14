@@ -9,7 +9,13 @@ from enum import Enum
 import numpy as np
 import torch
 
-SETS = Enum("Sets", "train test")
+# Create a named Enum class so multiprocessing's pickler can import it by name.
+# multiprocessing/pickle will try to look up the class as an attribute on the
+# module (e.g. random_neural_net_models.mingpt.utils.Sets). Defining the
+# class as `Sets` at module-level makes it importable/picklable. Keep the
+# uppercase `SETS` alias for backwards compatibility with existing code.
+Sets = Enum("Sets", "train test")
+SETS = Sets
 
 
 def set_seed(seed):
