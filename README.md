@@ -2,6 +2,9 @@
 
 > Implementations of a random selection of artificial neural net based models and methods.
 
+[![Tests](https://github.com/eschmidt42/random-neural-net-models/actions/workflows/test.yml/badge.svg)](https://github.com/eschmidt42/random-neural-net-models/actions/workflows/test.yml)
+[![codecov](https://codecov.io/github/eschmidt42/random-neural-net-models/graph/badge.svg?token=43GQH6AU2U)](https://codecov.io/github/eschmidt42/random-neural-net-models)
+
 ## Python version
 
 Development is done using [`uv`](https://docs.astral.sh/uv/getting-started/installation/), pinning the python version to the one in the file `.python-version`.
