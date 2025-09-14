@@ -1,22 +1,31 @@
 # random neural nets
 
-Implementations of a random selection of artificial neural net based models and methods.
+> Implementations of a random selection of artificial neural net based models and methods.
 
 ## Python version
 
-Development is done using [`pyenv`](https://realpython.com/intro-to-pyenv/), pinning the python version to the one in the file `.python-version`.
+Development is done using [`uv`](https://docs.astral.sh/uv/getting-started/installation/), pinning the python version to the one in the file `.python-version`.
 
 ## Installation (on Linux)
 
-Package + notebooks:
+```shell
+pip install random-neural-net-models
+```
 
-    git clone https://github.com/eschmidt42/random-neural-net-models.git
-    cd random-neural-net-models
-    make install
+or
 
-Package only:
+```shell
+uv add random-neural-net-models
+```
 
-    pip install random-neural-net-models
+For package development / notebooks shenanigans:
+
+```shell
+git clone https://github.com/eschmidt42/random-neural-net-models.git
+cd random-neural-net-models
+make install-dev-env
+```
+
 
 ## Usage
 
