@@ -24,7 +24,17 @@ jobs:
           ${{ runner.os }}-pip-
     - name: Install dependencies
       run: |
-        make install-gh-test
+        make install-ci-env
     - name: Run tests
-      run: |
-        pytest -v
+      run: |-
+          source .venv/bin/activate
+          coverage run -m pytest -v tests/
+          coverage report --omit="tests/*"
+          coverage xml --omit="tests/*"
+
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v5
+      with:
+          files: ./coverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: true

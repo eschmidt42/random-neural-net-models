@@ -14,9 +14,7 @@ import random_neural_net_models.data as rnnm_data
         ),  # Test case 2: Multiple columns with different number of categories
     ],
 )
-def test_get_index_ranges_from_n_cats_per_col(
-    n_categories_per_column, expected_ranges
-):
+def test_get_index_ranges_from_n_cats_per_col(n_categories_per_column, expected_ranges):
     index_ranges = rnnm_data.get_index_ranges_from_n_cats_per_col(
         n_categories_per_column
     )

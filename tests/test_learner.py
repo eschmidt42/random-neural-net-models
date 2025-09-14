@@ -2,8 +2,10 @@
 SEED = 42
 
 import typing as T
+import warnings
 from pathlib import Path
 
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
@@ -14,13 +16,23 @@ import torch
 import torch.nn as nn
 import torch.nn.modules.loss as torch_loss
 import torch.optim as optim
-from einops import rearrange
-from tensordict import tensorclass
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 
 import random_neural_net_models.data as rnnm_data
 import random_neural_net_models.learner as rnnm_learner
 import random_neural_net_models.utils as utils
+
+
+@pytest.fixture(autouse=True)
+def _use_agg_backend_and_silence_warnings():
+    # Suppress UserWarnings emitted by matplotlib when switching backends
+    warnings.filterwarnings("ignore", category=UserWarning)
+    matplotlib.use("Agg")
+    try:
+        yield
+    finally:
+        # Restore warnings to their default state after tests
+        warnings.resetwarnings()
 
 
 class Layer(nn.Module):
@@ -45,8 +57,7 @@ class DenseNet(nn.Module):
         self.n_hidden = n_hidden
 
         components = [
-            Layer(n_in, n_out)
-            for (n_in, n_out) in zip(n_hidden[:-1], n_hidden[1:])
+            Layer(n_in, n_out) for (n_in, n_out) in zip(n_hidden[:-1], n_hidden[1:])
         ]
 
         self.net = nn.Sequential(*components)
@@ -161,9 +172,7 @@ def test_learner(use_callbacks: bool):
 
     lr_find_callback = rnnm_learner.LRFinderCallback(1e-5, 100, 100)
 
-    learner.find_learning_rate(
-        dl_train, n_epochs=2, lr_find_callback=lr_find_callback
-    )
+    learner.find_learning_rate(dl_train, n_epochs=2, lr_find_callback=lr_find_callback)
 
     lr_find_callback.plot()
 

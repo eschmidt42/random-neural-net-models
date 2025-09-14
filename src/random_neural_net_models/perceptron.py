@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import logging
 import typing as T
 
 import numpy as np
@@ -8,14 +9,14 @@ import tqdm
 from scipy.sparse import issparse
 from sklearn import base, preprocessing
 from sklearn.utils.multiclass import unique_labels
-from sklearn.utils.validation import check_is_fitted
+from sklearn.utils.validation import check_is_fitted, validate_data
 
 import random_neural_net_models.utils as utils
 
-logger = utils.get_logger("perceptron", level="DEBUG")
+logger = utils.get_logger("perceptron", level=logging.DEBUG)
 
 
-class PerceptronClassifier(base.BaseEstimator, base.ClassifierMixin):
+class PerceptronClassifier(base.ClassifierMixin, base.BaseEstimator):
     """OG neural net
 
     Implementation follows: https://en.wikipedia.org/wiki/Perceptron
@@ -46,22 +47,16 @@ class PerceptronClassifier(base.BaseEstimator, base.ClassifierMixin):
     def _fit_two_class(self, X: np.ndarray, y: np.ndarray):
         torch.manual_seed(self.random_state)
 
-        self.weights_ = torch.randn(
-            X.shape[1], dtype=torch.double
-        )  # (N_features,)
+        self.weights_ = torch.randn(X.shape[1], dtype=torch.double)  # (N_features,)
         self.bias_ = torch.zeros(1, dtype=torch.double)  # (1,)
 
         _X, _y = self._handle_Xy(X, y)
-        self.errors_ = torch.zeros(
-            self.epochs, dtype=torch.float32
-        )  # (N_epochs,)
+        self.errors_ = torch.zeros(self.epochs, dtype=torch.float32)  # (N_epochs,)
 
         for epoch in tqdm.tqdm(range(self.epochs), disable=not self.verbose):
             y_hat = _X @ self.weights_ + self.bias_
 
-            y_hat_discrete = torch.where(
-                y_hat > 0, 1.0, 0.0
-            )  # heaviside step function
+            y_hat_discrete = torch.where(y_hat > 0, 1.0, 0.0)  # heaviside step function
 
             dy = _y - y_hat_discrete
             dw = self.learning_rate * _X.T @ dy
@@ -87,9 +82,7 @@ class PerceptronClassifier(base.BaseEstimator, base.ClassifierMixin):
         _y_int = _y.clone().long()
         # we convert the integer labels to one-hot vectors to be able to apply the same math as for the two-class perceptron
         y_onehot = F.one_hot(_y_int, num_classes=self.n_classes_)
-        self.errors_ = torch.zeros(
-            self.epochs, dtype=torch.float32
-        )  # (N_epochs,)
+        self.errors_ = torch.zeros(self.epochs, dtype=torch.float32)  # (N_epochs,)
 
         for epoch in tqdm.tqdm(range(self.epochs), disable=not self.verbose):
             y_hat = _X @ self.weights_ + self.bias_
@@ -99,9 +92,7 @@ class PerceptronClassifier(base.BaseEstimator, base.ClassifierMixin):
             y_hat_discrete = torch.argmax(y_hat, dim=1)
 
             # now onehot encoding the discrete predictions
-            y_hat_onehot = F.one_hot(
-                y_hat_discrete, num_classes=self.n_classes_
-            )
+            y_hat_onehot = F.one_hot(y_hat_discrete, num_classes=self.n_classes_)
 
             dy = y_onehot - y_hat_onehot
 
@@ -119,11 +110,10 @@ class PerceptronClassifier(base.BaseEstimator, base.ClassifierMixin):
 
     def fit(self, X: np.ndarray, y: np.ndarray) -> "PerceptronClassifier":
         if issparse(y):
-            raise ValueError(
-                "sparse multilabel-indicator for y is not supported."
-            )
+            raise ValueError("sparse multilabel-indicator for y is not supported.")
 
-        X, y = self._validate_data(
+        X, y = validate_data(
+            self,
             X,
             y,
             ensure_2d=True,
@@ -168,7 +158,7 @@ class PerceptronClassifier(base.BaseEstimator, base.ClassifierMixin):
                 "errors_",
             ),
         )
-        X = self._validate_data(X, dtype=[np.float32, np.float64], reset=False)
+        X = validate_data(self, X, dtype=[np.float32, np.float64], reset=False)
 
         if X.shape[1] != self.n_features_in_:
             raise ValueError(f"{X.shape[1]=} != {self.n_features_in_=}")

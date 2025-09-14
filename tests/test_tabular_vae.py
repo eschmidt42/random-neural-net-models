@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
-import torch
 import pytest
+import torch
+
 from random_neural_net_models import tabular_vae
 
 

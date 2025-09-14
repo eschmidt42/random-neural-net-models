@@ -95,7 +95,6 @@ def test_tokens_invalid_values(values):
 
 
 def test_text_to_ids():
-
     expected = rnnm_tok.TokenIDs(
         ids=(
             70,
@@ -180,7 +179,6 @@ def test_merge_token_ids():
 
 
 def test_repeated_merge():
-
     text = TEST_STRINGS["tom lehrer: motto"]
     token_ids = [int(v) for v in text.encode("utf-8")]
     vocab_size = len(set(token_ids)) + 20
@@ -257,21 +255,18 @@ def test_repeated_merge():
 
 @pytest.mark.parametrize("vals", [{(1, 2): 3}, {(1, 2): 3, (4, 5): 6}])
 def test_tokenid_merge_map(vals):
-
     # line to test
     id_map = rnnm_tok.TokenIDMergeMap(map=vals)
 
 
 @pytest.mark.parametrize("vals", [{(1, 2): "3"}, {(1, 2): 3, (4, 5): 3}])
 def test_tokenid_merge_map_fails(vals):
-
     # line to test
     with pytest.raises(ValidationError):
         id_map = rnnm_tok.TokenIDMergeMap(map=vals)
 
 
 def test_decode():
-
     token_ids = rnnm_tok.TokenIDs(
         ids=(
             141,

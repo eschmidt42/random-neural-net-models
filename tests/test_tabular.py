@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
+import typing as T
+
+import numpy as np
 import pandas as pd
-import torch
 import pytest
-import random_neural_net_models.tabular as rnnm_tab
+import torch
+
 import random_neural_net_models.data as rnnm_data
 import random_neural_net_models.losses as rnnm_loss
-import numpy as np
-import typing as T
+import random_neural_net_models.tabular as rnnm_tab
 
 
 @pytest.mark.parametrize("use_batch_norm", [True, False])
@@ -54,9 +56,7 @@ def test_tabular_model(use_batch_norm: bool, n_classes: int, n_features: int):
         (4, (0, 1, 2, 3)),
     ],
 )
-def test_tabular_model_missingness(
-    n_features: int, cols_with_missing: T.Tuple[int]
-):
+def test_tabular_model_missingness(n_features: int, cols_with_missing: T.Tuple[int]):
     n_classes = 3
     model = rnnm_tab.TabularModel(
         n_hidden=[n_features, 5, n_classes],
@@ -365,9 +365,7 @@ def test_make_string_columns_to_int():
     )
     categorical_columns = ["col1", "col2"]
 
-    df_int, maps_str2int = rnnm_tab.make_string_columns_to_int(
-        df, categorical_columns
-    )
+    df_int, maps_str2int = rnnm_tab.make_string_columns_to_int(df, categorical_columns)
 
     assert isinstance(df_int, pd.DataFrame)
     assert isinstance(maps_str2int, dict)
