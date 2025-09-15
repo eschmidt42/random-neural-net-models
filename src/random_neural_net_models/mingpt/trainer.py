@@ -5,16 +5,19 @@ so nothing in this file really has anything to do with GPT specifically.
 """
 
 import time
-import typing as T
 from collections import defaultdict
+from typing import Callable
 
 import torch
-from torch.utils.data import Dataset, RandomSampler
+from torch.utils.data import RandomSampler
 from torch.utils.data.dataloader import DataLoader
 
 import random_neural_net_models.mingpt.configs as configs
 import random_neural_net_models.mingpt.model as gpt_model
 import random_neural_net_models.utils as utils
+from random_neural_net_models.mingpt.adder import AdditionDataset
+from random_neural_net_models.mingpt.char import CharDataset
+from random_neural_net_models.mingpt.sorter import SortDataset
 
 logger = utils.get_logger("mingpt.trainer")
 
@@ -28,7 +31,7 @@ class Trainer:
         self,
         config: configs.TrainerConfig,
         model: gpt_model.GPT,
-        train_dataset: Dataset,
+        train_dataset: AdditionDataset | CharDataset | SortDataset,
     ):
         self.config = config
         self.model = model
@@ -49,10 +52,10 @@ class Trainer:
         self.iter_time = 0.0
         self.iter_dt = 0.0
 
-    def add_callback(self, onevent: str, callback: T.Callable):
+    def add_callback(self, onevent: str, callback: Callable):
         self.callbacks[onevent].append(callback)
 
-    def set_callback(self, onevent: str, callback: T.Callable):
+    def set_callback(self, onevent: str, callback: Callable):
         self.callbacks[onevent] = [callback]
 
     def trigger_callbacks(self, onevent: str):
@@ -85,9 +88,7 @@ class Trainer:
 
         self.do_train(train_loader)
 
-    def _get_batch(
-        self, train_loader: DataLoader
-    ) -> T.Tuple[torch.Tensor, torch.Tensor]:
+    def _get_batch(self, train_loader: DataLoader) -> tuple[torch.Tensor, torch.Tensor]:
         # fetch the next batch (x, y) and re-init iterator if needed
         try:
             batch = next(self.data_iter)
@@ -99,6 +100,9 @@ class Trainer:
         return x, y
 
     def do_train(self, train_loader: DataLoader):
+        if self.optimizer is None:
+            raise ValueError(f"{self.optimizer=} cannot be None here")
+
         self.model.train()
         self.iter_num = 0
         self.iter_time = time.time()
