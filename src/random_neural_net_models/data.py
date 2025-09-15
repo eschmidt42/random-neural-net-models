@@ -171,7 +171,7 @@ def calc_n_categories_per_column(X_cat: np.ndarray) -> list[int]:
 
 
 def get_index_ranges_from_n_cats_per_col(
-    n_categories_per_column: list[int],
+    n_categories_per_column: tuple[int, ...],
 ) -> list[tuple[int]]:
     if len(n_categories_per_column) == 0:
         msg = f"{n_categories_per_column=} must have at least one element"

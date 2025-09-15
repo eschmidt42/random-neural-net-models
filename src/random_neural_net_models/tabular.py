@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
-import pandas as pd
-import torch.nn as nn
 import typing as T
+from enum import Enum
+from functools import partial
+
+import numpy as np
+import pandas as pd
 import torch
+import torch.nn as nn
+
 import random_neural_net_models.data as rnnm_data
 import random_neural_net_models.utils as utils
-from enum import Enum
-import numpy as np
-from functools import partial
 
 logger = utils.get_logger("tabular.py")
 
@@ -42,9 +44,7 @@ class BiasSources(Enum):
 
 
 class ImputeMissingness(nn.Module):
-    def __init__(
-        self, cols_with_missing: T.Tuple[int], bias_source: BiasSources
-    ):
+    def __init__(self, cols_with_missing: T.Tuple[int], bias_source: BiasSources):
         super().__init__()
 
         if len(cols_with_missing) > len(set(cols_with_missing)):
@@ -53,22 +53,16 @@ class ImputeMissingness(nn.Module):
 
         match bias_source:
             case BiasSources.zero:
-                bias = torch.zeros(
-                    (1, len(cols_with_missing)), dtype=torch.float
-                )
+                bias = torch.zeros((1, len(cols_with_missing)), dtype=torch.float)
             case BiasSources.normal:
-                bias = torch.rand(
-                    (1, len(cols_with_missing)), dtype=torch.float
-                )
+                bias = torch.rand((1, len(cols_with_missing)), dtype=torch.float)
             case _:
                 raise NotImplementedError(
                     f"{bias_source=} is not implemented in BiasSources, knows members: {BiasSources._member_names_()}"
                 )
 
         self.bias = nn.Parameter(bias)
-        self.register_buffer(
-            "cols_with_missing", torch.tensor(cols_with_missing)
-        )
+        self.register_buffer("cols_with_missing", torch.tensor(cols_with_missing))
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         X_sub = X[:, self.cols_with_missing].clone()
@@ -89,11 +83,11 @@ class ImputeMissingness(nn.Module):
 class TabularModel(nn.Module):
     def __init__(
         self,
-        n_hidden: T.List[int],
+        n_hidden: tuple[int, ...],
         use_batch_norm: bool,
         do_impute: bool = False,
         impute_bias_source: BiasSources = BiasSources.zero,
-        cols_with_missing: T.Tuple[int] = None,
+        cols_with_missing: tuple[int] | None = None,
     ) -> None:
         super().__init__()
 
@@ -108,8 +102,8 @@ class TabularModel(nn.Module):
                     bias_source=impute_bias_source,
                 )
             )
-            n_hidden[0] = (
-                n_hidden[0] + len((cols_with_missing))
+            n_hidden[0] = n_hidden[0] + len(
+                (cols_with_missing)
             )  # because ImputeMissingness horizontally stacks boolean missingness flags
 
         self.n_hidden = n_hidden
@@ -236,11 +230,7 @@ def make_missing(
         msg = f"cols_with_missing={cols_with_missing} contains duplicates."
         raise ValueError(msg)
 
-    s = (
-        X.shape
-        if cols_with_missing is None
-        else (X.shape[0], len(cols_with_missing))
-    )
+    s = X.shape if cols_with_missing is None else (X.shape[0], len(cols_with_missing))
     mask = np.random.choice([False, True], size=s, p=[1 - p_missing, p_missing])
     X_miss = X.copy()
     if cols_with_missing is None:
@@ -287,9 +277,7 @@ class TabularModelNumericalAndCategorical(nn.Module):
 
         self.categoric_column_ids = list(range(len(n_categories_per_column)))
 
-        ids_to_keep = [
-            i for i, v in enumerate(n_categories_per_column) if v > 1
-        ]
+        ids_to_keep = [i for i, v in enumerate(n_categories_per_column) if v > 1]
         if len(ids_to_keep) < len(n_categories_per_column):
             ids_to_drop = [
                 v
@@ -297,16 +285,12 @@ class TabularModelNumericalAndCategorical(nn.Module):
                 if i not in ids_to_keep
             ]
             n_cats_per_col_to_drop = [
-                v
-                for i, v in enumerate(n_categories_per_column)
-                if i not in ids_to_keep
+                v for i, v in enumerate(n_categories_per_column) if i not in ids_to_keep
             ]
             msg = f"found that ({len(ids_to_drop)}) provided categorical columns ({ids_to_drop}) had an ordinality of < 2 ({n_cats_per_col_to_drop}). dropping them."
             logger.warning(msg)
 
-        self.categoric_column_ids = [
-            self.categoric_column_ids[i] for i in ids_to_keep
-        ]
+        self.categoric_column_ids = [self.categoric_column_ids[i] for i in ids_to_keep]
         self.n_categories_per_column = [
             n_categories_per_column[i] + 1 for i in ids_to_keep
         ]  # +1 for the fallback category, e.g. missing value
@@ -352,10 +336,7 @@ class TabularModelNumericalAndCategorical(nn.Module):
             x_num = self.impute(x_num)
         x_cat = input.x_categorical
         x_emb = torch.cat(
-            [
-                embedding(x_cat[:, i])
-                for i, embedding in enumerate(self.embeddings)
-            ],
+            [embedding(x_cat[:, i]) for i, embedding in enumerate(self.embeddings)],
             dim=1,
         )
         x = torch.cat([x_num, x_emb], dim=1)

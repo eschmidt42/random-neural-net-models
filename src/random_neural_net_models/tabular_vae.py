@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
-import random_neural_net_models.tabular as rnnm_tab
-import random_neural_net_models.data as rnnm_data
-import torch.nn as nn
-import torch
-import typing as T
-from tensordict import tensorclass
-import torch.nn.functional as F
 import copy
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from tensordict import tensorclass
+
+import random_neural_net_models.data as rnnm_data
+import random_neural_net_models.tabular as rnnm_tab
 
 
 @tensorclass
@@ -45,30 +46,34 @@ class Latent(nn.Module):
 
 
 class StandardNormalScalers(nn.Module):
-    def __init__(self, means: T.Tuple[float], stds: T.Tuple[float]):
+    def __init__(self, means: tuple[float, ...], stds: tuple[float, ...]):
         super().__init__()
 
         self.register_buffer("means", torch.tensor(means).float())
         self.register_buffer("stds", torch.tensor(stds).float())
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
-        return X * self.stds + self.means
+        if isinstance(self.stds, torch.Tensor) and isinstance(self.means, torch.Tensor):
+            return X * self.stds + self.means
+        raise ValueError(
+            f"Expected {type(self.stds)=} and {type(self.means)=} to be of type torch.Tensor"
+        )
 
 
-VAEOutput = T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+VAEOutput = tuple[torch.Tensor, torch.Tensor, torch.Tensor]
 
 
 class TabularVariationalAutoEncoderNumerical(nn.Module):
     def __init__(
         self,
-        n_hidden: T.Tuple[int],
+        n_hidden: tuple[int, ...],
         n_latent: int,
-        means: T.Tuple[float],
-        stds: T.Tuple[float],
+        means: tuple[float],
+        stds: tuple[float],
         use_batch_norm: bool,
         do_impute: bool,
         impute_bias_source: rnnm_tab.BiasSources = rnnm_tab.BiasSources.zero,
-        cols_with_missing: T.Tuple[int] = None,
+        cols_with_missing: tuple[int] | None = None,
     ):
         super().__init__()
         self.encoder = rnnm_tab.TabularModel(
@@ -83,7 +88,7 @@ class TabularVariationalAutoEncoderNumerical(nn.Module):
             n_in=n_hidden[-1], n_out=n_latent, use_batch_norm=use_batch_norm
         )
 
-        n_hidden_decoder = [n_latent] + list(reversed(n_hidden))
+        n_hidden_decoder = tuple([n_latent] + list(reversed(n_hidden)))
 
         self.decoder = rnnm_tab.TabularModel(
             n_hidden=n_hidden_decoder,
@@ -98,9 +103,7 @@ class TabularVariationalAutoEncoderNumerical(nn.Module):
 
         latent_stuff: LatentOutput = self.latent(x_enc)
 
-        z = rnnm_data.XBlock(
-            x=latent_stuff.z, batch_size=[latent_stuff.z.shape[0]]
-        )
+        z = rnnm_data.XBlock(x=latent_stuff.z, batch_size=[latent_stuff.z.shape[0]])
 
         x_recon = self.decoder(z)
         x_recon = self.scalers(x_recon)
@@ -118,9 +121,7 @@ class KullbackLeiblerNumericalOnlyLoss(nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(
-        self, inference: VAEOutput, input: rnnm_data.XBlock
-    ) -> torch.Tensor:
+    def forward(self, inference: VAEOutput, input: rnnm_data.XBlock) -> torch.Tensor:
         x_recon, mu, log_var = inference
         recon_loss = nn.functional.mse_loss(x_recon, input.x, reduction="sum")
         kl_div = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())
@@ -130,7 +131,7 @@ class KullbackLeiblerNumericalOnlyLoss(nn.Module):
 
 
 class SoftmaxForCategoricalColumns(nn.Module):
-    def __init__(self, n_categories_per_column: T.Iterable[int]):
+    def __init__(self, n_categories_per_column: tuple[int, ...]):
         super().__init__()
 
         self.index_ranges = rnnm_data.get_index_ranges_from_n_cats_per_col(
@@ -143,23 +144,21 @@ class SoftmaxForCategoricalColumns(nn.Module):
         return x
 
 
-VAEOutput_num_cat = T.Tuple[
-    torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor
-]
+VAEOutput_num_cat = tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
 
 
 class TabularVariationalAutoEncoderNumericalAndCategorical(nn.Module):
     def __init__(
         self,
-        n_hidden: T.Tuple[int],
-        n_categories_per_column: T.Tuple[int],
+        n_hidden: tuple[int, ...],
+        n_categories_per_column: tuple[int, ...],
         n_latent: int,
-        means: T.Tuple[float],
-        stds: T.Tuple[float],
+        means: tuple[float, ...],
+        stds: tuple[float, ...],
         use_batch_norm: bool,
         do_impute: bool,
         impute_bias_source: rnnm_tab.BiasSources = rnnm_tab.BiasSources.zero,
-        cols_with_missing: T.Tuple[int] = None,
+        cols_with_missing: tuple[int, ...] | None = None,
     ):
         super().__init__()
         self.n_categories_per_column = n_categories_per_column
@@ -184,24 +183,20 @@ class TabularVariationalAutoEncoderNumericalAndCategorical(nn.Module):
         n_hidden_decoder[-1] = self.n_num_out + self.n_cat_softmax_out
 
         self.decoder = rnnm_tab.TabularModel(
-            n_hidden=n_hidden_decoder,
+            n_hidden=tuple(n_hidden_decoder),
             use_batch_norm=use_batch_norm,
             do_impute=False,
             impute_bias_source=impute_bias_source,
         )
         self.scalers = StandardNormalScalers(means=means, stds=stds)
-        self.cats_softmax = SoftmaxForCategoricalColumns(
-            n_categories_per_column
-        )
+        self.cats_softmax = SoftmaxForCategoricalColumns(n_categories_per_column)
 
-    def forward(self, input: rnnm_data.XBlock_numcat) -> VAEOutput:
+    def forward(self, input: rnnm_data.XBlock_numcat) -> VAEOutput_num_cat:
         x_enc = self.encoder(input)
 
         latent_stuff: LatentOutput = self.latent(x_enc)
 
-        z = rnnm_data.XBlock(
-            x=latent_stuff.z, batch_size=[latent_stuff.z.shape[0]]
-        )
+        z = rnnm_data.XBlock(x=latent_stuff.z, batch_size=[latent_stuff.z.shape[0]])
 
         x_recon = self.decoder(z)
 
@@ -222,7 +217,7 @@ class TabularVariationalAutoEncoderNumericalAndCategorical(nn.Module):
 
 
 class KullbackLeiblerNumericalAndCategoricalLoss(nn.Module):
-    def __init__(self, n_categories_per_column: T.Iterable[int]):
+    def __init__(self, n_categories_per_column: tuple[int, ...]):
         super().__init__()
         self.index_ranges = rnnm_data.get_index_ranges_from_n_cats_per_col(
             n_categories_per_column
@@ -232,9 +227,7 @@ class KullbackLeiblerNumericalAndCategoricalLoss(nn.Module):
         self, inference: VAEOutput_num_cat, input: rnnm_data.XBlock_numcat
     ) -> torch.Tensor:
         x_recon_num, x_recon_cat, mu, log_var = inference
-        recon_loss_num = F.mse_loss(
-            x_recon_num, input.x_numerical, reduction="sum"
-        )
+        recon_loss_num = F.mse_loss(x_recon_num, input.x_numerical, reduction="sum")
 
         n_cols = input.x_categorical.shape[1]
         if n_cols != len(self.index_ranges):
@@ -261,14 +254,12 @@ class KullbackLeiblerNumericalAndCategoricalLoss(nn.Module):
 
 
 def transform_X_cat_probs_to_classes(
-    X_cat_probs: torch.Tensor, n_categories_per_column: T.Iterable[int]
+    X_cat_probs: torch.Tensor, n_categories_per_column: tuple[int, ...]
 ) -> torch.Tensor:
     index_ranges = rnnm_data.get_index_ranges_from_n_cats_per_col(
         n_categories_per_column
     )
-    X_cat = torch.stack(
-        [X_cat_probs[:, r].argmax(dim=1) for r in index_ranges], dim=1
-    )
+    X_cat = torch.stack([X_cat_probs[:, r].argmax(dim=1) for r in index_ranges], dim=1)
     return X_cat
 
 
