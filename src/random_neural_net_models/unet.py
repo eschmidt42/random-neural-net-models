@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # based on https://github.com/fastai/course22p2/blob/master/nbs/26_diffusion_unet.ipynb
-import typing as T
+
+from typing import Any, Generator
 
 import torch
 import torch.nn as nn
@@ -14,7 +15,7 @@ logger = utils.get_logger("unet.py")
 
 def get_conv_pieces(
     num_features_in: int, num_features_out: int, kernel_size: int, stride: int
-) -> T.Tuple[nn.Module, nn.Module, nn.Module]:
+) -> tuple[nn.Module, nn.Module, nn.Module]:
     """Batch norm, SiLU activation and conv2d layer for the unet's resnet blocks."""
     bn = nn.BatchNorm2d(num_features=num_features_in)
     act = nn.SiLU()
@@ -59,9 +60,7 @@ class ResBlock(nn.Module):
         self.idconv = (
             nn.Identity()
             if self.use_identity
-            else nn.Conv2d(
-                num_features_in, num_features_out, kernel_size=1, stride=1
-            )
+            else nn.Conv2d(num_features_in, num_features_out, kernel_size=1, stride=1)
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -137,7 +136,7 @@ class DownBlock(nn.Module):
 
 
 class UNetDown(nn.Module):
-    def __init__(self, num_features: T.Tuple[int], num_layers: int) -> None:
+    def __init__(self, num_features: tuple[int, ...], num_layers: int) -> None:
         super().__init__()
 
         n_ins = [num_features[0]] + list(num_features[:-1])
@@ -146,9 +145,7 @@ class UNetDown(nn.Module):
 
         self.down_blocks = nn.ModuleList(
             [
-                DownBlock(
-                    n_in, n_out, add_down=add_down, num_resnet_layers=num_layers
-                )
+                DownBlock(n_in, n_out, add_down=add_down, num_resnet_layers=num_layers)
                 for n_in, n_out, add_down in zip(n_ins, n_outs, add_downs)
             ]
         )
@@ -158,7 +155,7 @@ class UNetDown(nn.Module):
             x = down_block(x)
         return x
 
-    def __iter__(self) -> torch.Tensor:
+    def __iter__(self) -> Generator[torch.Tensor, Any, Any]:
         for down_block in self.down_blocks:
             yield down_block.saved_output
 
@@ -209,16 +206,12 @@ class UpBlock(nn.Module):
         if self.add_up:
             self.up = nn.Sequential(
                 nn.Upsample(scale_factor=2, mode="nearest"),
-                nn.Conv2d(
-                    num_features_out, num_features_out, kernel_size=3, padding=1
-                ),
+                nn.Conv2d(num_features_out, num_features_out, kernel_size=3, padding=1),
             )
         else:
             self.up = nn.Identity()
 
-    def forward(
-        self, x_up: torch.Tensor, xs_down: T.List[torch.Tensor]
-    ) -> torch.Tensor:
+    def forward(self, x_up: torch.Tensor, xs_down: list[torch.Tensor]) -> torch.Tensor:
         x_glue = torch.cat([x_up, xs_down.pop()], dim=1)
         x = self.res_blocks[0](x_glue)
 
@@ -267,9 +260,7 @@ class UNetUp(nn.Module):
                 raise ValueError(f"unexpected case for {up_block=}")
 
             # n_out_up
-            down_input_conv = down_block.res_blocks[0].convs[
-                2
-            ]  # (bn, act, conv)
+            down_input_conv = down_block.res_blocks[0].convs[2]  # (bn, act, conv)
             n_out_up = down_input_conv.in_channels
 
             add_up = not is_final_layer
@@ -285,9 +276,7 @@ class UNetUp(nn.Module):
             )
             self.ups.append(up_block)
 
-    def forward(
-        self, x: torch.Tensor, saved: T.List[torch.Tensor]
-    ) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, saved: list[torch.Tensor]) -> torch.Tensor:
         for upblock in self.ups:
             x = upblock(x, saved)
         return x
@@ -298,7 +287,7 @@ class UNetModel(nn.Module):
         self,
         in_channels: int = 1,
         out_channels: int = 1,
-        list_num_features: T.Tuple[int] = (8, 16),
+        list_num_features: tuple[int, ...] = (8, 16),
         num_layers: int = 2,
     ):
         super().__init__()
@@ -317,7 +306,7 @@ class UNetModel(nn.Module):
 
         self.setup_output(list_num_features, out_channels)
 
-    def setup_input(self, in_channels: int, list_num_features: T.Tuple[int]):
+    def setup_input(self, in_channels: int, list_num_features: tuple[int, ...]):
         if in_channels == 1:
             self.add_dim = Rearrange("b h w -> b 1 h w")
         else:
@@ -327,11 +316,9 @@ class UNetModel(nn.Module):
         self.conv_in = nn.Conv2d(
             in_channels, list_num_features[0], kernel_size=3, padding=1
         )
-        self.wrangle_input = nn.Sequential(
-            self.add_dim, self.add_padding, self.conv_in
-        )
+        self.wrangle_input = nn.Sequential(self.add_dim, self.add_padding, self.conv_in)
 
-    def setup_output(self, list_num_features: T.Tuple[int], out_channels: int):
+    def setup_output(self, list_num_features: tuple[int, ...], out_channels: int):
         self.bn_out, self.act_out, self.conv_out = get_conv_pieces(
             list_num_features[0], out_channels, kernel_size=1, stride=1
         )
@@ -374,5 +361,7 @@ class UNetModel(nn.Module):
 
 
 class UNetModel2(UNetModel):
-    def forward(self, input: rnnm_data.MNISTBlockWithLabels) -> torch.Tensor:
-        return super().forward(input.image)
+    def forward(self, x: rnnm_data.MNISTBlockWithLabels | torch.Tensor) -> torch.Tensor:
+        if isinstance(x, rnnm_data.MNISTBlockWithLabels):
+            return super().forward(x.image)
+        return super().forward(x)

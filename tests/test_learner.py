@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 SEED = 42
-
 import typing as T
 import warnings
 from pathlib import Path
@@ -14,13 +13,13 @@ import sklearn.datasets as sk_datasets
 import sklearn.model_selection as model_selection
 import torch
 import torch.nn as nn
-import torch.nn.modules.loss as torch_loss
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
 import random_neural_net_models.data as rnnm_data
 import random_neural_net_models.learner as rnnm_learner
 import random_neural_net_models.utils as utils
+from random_neural_net_models.backprop_rumelhart import BCELoss
 
 
 @pytest.fixture(autouse=True)
@@ -68,18 +67,8 @@ class DenseNet(nn.Module):
         return self.net(input.x)
 
 
-class BCELoss(torch_loss.BCELoss):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def forward(
-        self, inference: torch.Tensor, input: rnnm_data.XyBlock
-    ) -> torch.Tensor:
-        return super().forward(inference, input.y)
-
-
 @pytest.mark.parametrize("use_callbacks", [True, False])
-def test_learner(use_callbacks: bool):
+def test_learner(use_callbacks: bool, tmp_path: Path):
     "The test succeeds if the below executes without error"
 
     X, y = sk_datasets.make_blobs(
@@ -119,9 +108,8 @@ def test_learner(use_callbacks: bool):
     loss = BCELoss()
     loss_callback = rnnm_learner.TrainLossCallback()
 
-    save_dir = Path(
-        f"./test-models-cb-{use_callbacks}"
-    )  # location used by learner.find_learning_rate to store the model before the search
+    # location used by learner.find_learning_rate to store the model before the search
+    save_dir = tmp_path / f"./test-models-cb-{use_callbacks}"
 
     # the following callbacks are not strictly necessary for learning rate search and
     # training, but may make debugging of slow / unexpected training easier

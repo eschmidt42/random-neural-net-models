@@ -2,15 +2,12 @@
 """
 Trains a GPT to add n-digit numbers.
 """
-import typing as T
 
 import torch
 from pydantic.dataclasses import dataclass
 from torch.utils.data import Dataset
 
 import random_neural_net_models.mingpt.configs as configs
-
-# import random_neural_net_models.mingpt.data as data
 import random_neural_net_models.mingpt.utils as utils
 
 
@@ -46,9 +43,9 @@ def get_config(vocab_size: int, block_size: int, max_iters: int) -> AdderConfig:
 def generate_list_of_random_integers(ndigit: int) -> torch.Tensor:
     # split up all addition problems into either training data or test data
     ndigit = ndigit
-    assert (
-        ndigit <= 3
-    ), "the lines below would be very memory inefficient, in future maybe refactor to support"
+    assert ndigit <= 3, (
+        "the lines below would be very memory inefficient, in future maybe refactor to support"
+    )
     num = (
         10**ndigit
     ) ** 2  # total number of possible addition problems with ndigit numbers
@@ -58,7 +55,7 @@ def generate_list_of_random_integers(ndigit: int) -> torch.Tensor:
     return perm
 
 
-def get_abc(idx: int, ndigit: int) -> T.Tuple[int, int, int]:
+def get_abc(idx: int, ndigit: int) -> tuple[int, int, int]:
     nd = 10**ndigit
     a = idx // nd
     b = idx % nd
@@ -71,7 +68,7 @@ def int2str(x: int, ndigit: int) -> str:
     return f"{x:0{ndigit}d}"
 
 
-def encode_addition_problem(a: int, b: int, c: int, ndigit: int) -> T.List[int]:
+def encode_addition_problem(a: int, b: int, c: int, ndigit: int) -> list[int]:
     # if a = 1, b = 1, c = 2, ndigit = 2
     astr = int2str(a, ndigit)  # "01"
     bstr = int2str(b, ndigit)  # "01"
@@ -106,20 +103,22 @@ class AdditionDataset(Dataset):
     correctly.
     """
 
+    config: DataConfig
+    split: utils.SetsEnum
+    ixes: torch.Tensor
+
     @staticmethod
     def get_config(ndigit: int = 2) -> DataConfig:
         return DataConfig(ndigit=ndigit)
 
-    def __init__(self, config: DataConfig, split: utils.SETS):
+    def __init__(self, config: DataConfig, split: utils.SetsEnum):
         self.config = config
         self.split = split  # train/test
 
         perm = generate_list_of_random_integers(config.ndigit)
 
         num_test = min(int(len(perm) * 0.2), 500)
-        self.ixes = (
-            perm[:num_test] if split == utils.SETS.test else perm[num_test:]
-        )
+        self.ixes = perm[:num_test] if split == utils.SetsEnum.test else perm[num_test:]
 
     def get_vocab_size(self):
         return 10  # digits 0..9
@@ -136,7 +135,8 @@ class AdditionDataset(Dataset):
     def __getitem__(self, idx: int):
         ndigit = self.config.ndigit  # 2
 
-        a, b, c = get_abc(self.ixes[idx].item(), ndigit)  # 1, 1, 2
+        idx = int(self.ixes[idx].item())
+        a, b, c = get_abc(idx, ndigit)  # 1, 1, 2
 
         dix = encode_addition_problem(a, b, c, ndigit)  # [0,1,0,1,2,0,0]
 

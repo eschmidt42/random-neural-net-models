@@ -44,7 +44,6 @@ class TestPerceptronClassifier:
         assert (predictions == self.y).all()
 
 
-@pytest.mark.slow
 @parametrize_with_checks(
     [
         perceptron.PerceptronClassifier(),

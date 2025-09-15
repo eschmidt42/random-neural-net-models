@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import typing as T
+
 from collections import defaultdict
 from dataclasses import dataclass
 
@@ -21,7 +21,7 @@ class History:
         self,
         model: nn.Module,
         every_n: int = 1,
-        name_patterns: T.Tuple[str] = None,
+        name_patterns: tuple[str] | None = None,
         max_depth_search: int = 3,
     ):
         self.not_initialized = name_patterns is None or len(name_patterns) == 0
@@ -29,10 +29,10 @@ class History:
             logger.info("Not collecting history.")
             return
 
-        self.child_search = search.ChildSearch(
-            model, max_depth=max_depth_search
-        )
+        self.child_search = search.ChildSearch(model, max_depth=max_depth_search)
         self.every_n = every_n
+        if name_patterns is None:
+            raise ValueError(f"{name_patterns=} should not be None here.")
         self.modules = self.child_search(*name_patterns)
 
     @property
@@ -55,18 +55,18 @@ class ActivationsHistory(History):
         self,
         model: nn.Module,
         every_n: int = 1,
-        name_patterns: T.Tuple[str] = None,
+        name_patterns: tuple[str] | None = None,
         max_depth_search: int = 3,
     ):
         super().__init__(model, every_n, name_patterns, max_depth_search)
 
-        self.stats: T.Dict[str, T.List[ActivationStats]] = defaultdict(list)
+        self.stats: dict[str, list[ActivationStats]] = defaultdict(list)
         self.register_hooks(model, name_patterns, max_depth_search)
 
     def register_hooks(
         self,
         model: nn.Module,
-        name_patterns: T.Tuple[str] = None,
+        name_patterns: tuple[str, ...] | None = None,
         max_depth_search: int = 3,
     ):
         self.hooks = defaultdict(None)
@@ -75,9 +75,9 @@ class ActivationsHistory(History):
             cas = CollectorActivationStats(
                 self, named_module.name, every_n=self.every_n
             )
-            self.hooks[
-                named_module.name
-            ] = named_module.module.register_forward_hook(cas)
+            self.hooks[named_module.name] = named_module.module.register_forward_hook(
+                cas
+            )
 
         logger.info(
             f"Will collect activiation history every {self.every_n}th iteration for: {self.name_matches=}"
@@ -89,32 +89,30 @@ class GradientsHistory(History):
         self,
         model: nn.Module,
         every_n: int = 1,
-        name_patterns: T.Tuple[str] = None,
+        name_patterns: tuple[str] | None = None,
         max_depth_search: int = 3,
     ):
         super().__init__(model, every_n, name_patterns, max_depth_search)
-        self.stats: T.Dict[str, T.List[ParameterStats]] = defaultdict(list)
+        self.stats: dict[str, list[ParameterStats]] = defaultdict(list)
         self.register_hooks(model, name_patterns, max_depth_search)
 
     def register_hooks(
         self,
         model: nn.Module,
-        name_patterns: T.Tuple[str] = None,
+        name_patterns: tuple[str] | None = None,
         max_depth_search: int = 3,
     ):
-        self.child_search = search.ChildSearch(
-            model, max_depth=max_depth_search
-        )
+        self.child_search = search.ChildSearch(model, max_depth=max_depth_search)
+        if name_patterns is None:
+            raise ValueError(f"{name_patterns=} should not be None here.")
         self.modules = self.child_search(*name_patterns)
         self.hooks = defaultdict(None)
 
         for named_module in self.modules:
-            cgs = CollectorGradientStats(
-                self, named_module.name, every_n=self.every_n
+            cgs = CollectorGradientStats(self, named_module.name, every_n=self.every_n)
+            self.hooks[named_module.name] = (
+                named_module.module.register_full_backward_hook(cgs)
             )
-            self.hooks[
-                named_module.name
-            ] = named_module.module.register_full_backward_hook(cgs)
 
         logger.info(
             f"Will collect gradient history every {self.every_n}th iteration for: {self.name_matches=}"
@@ -130,11 +128,11 @@ class ParametersHistory(History):
         self,
         model: nn.Module,
         every_n: int = 1,
-        name_patterns: T.Tuple[str] = None,
+        name_patterns: tuple[str] | None = None,
         max_depth_search: int = 3,
     ):
         super().__init__(model, every_n, name_patterns, max_depth_search)
-        self.stats: T.Dict[str, T.List[ParameterStats]] = defaultdict(list)
+        self.stats: dict[str, list[ParameterStats]] = defaultdict(list)
         self.every_n = every_n
         logger.info(
             f"Will collect parameter history every {self.every_n}th iteration for: {self.name_matches=}"
@@ -158,7 +156,7 @@ class ParametersHistory(History):
     def draw(
         self,
         name: str,
-        figsize: T.Tuple[int, int] = (12, 7),
+        figsize: tuple[int, int] = (12, 7),
     ) -> None:
         if self.not_initialized:
             logger.info("Not drawing parameter history.")
@@ -235,7 +233,7 @@ class ParametersHistory(History):
         plt.tight_layout()
         plt.show()
 
-    def get_df(self, name: str) -> pd.DataFrame:
+    def get_df(self, name: str) -> pd.DataFrame | None:
         if self.not_initialized:
             logger.info("Not getting parameter history.")
             return
@@ -244,9 +242,7 @@ class ParametersHistory(History):
         # print error to log if any column has inf or nan values
         isna = df.isna()
         if df.isna().any().any():
-            mean_na = (
-                isna.mean().sort_values(ascending=False).rename("fraction")
-            )
+            mean_na = isna.mean().sort_values(ascending=False).rename("fraction")
             mean_na.index.name = "column"
             raise HistoryException(
                 f"{name=} df has missing values: {mean_na.to_markdown()}"
@@ -254,9 +250,7 @@ class ParametersHistory(History):
 
         isinf = df.isin([np.inf, -np.inf])
         if isinf.any().any():
-            mean_inf = (
-                isinf.mean().sort_values(ascending=False).rename("fraction")
-            )
+            mean_inf = isinf.mean().sort_values(ascending=False).rename("fraction")
             mean_inf.index.name = "column"
             raise HistoryException(
                 f"{name=} df has inf values: {mean_inf.to_markdown()}"
@@ -296,9 +290,7 @@ class CollectorActivationStats:
         acts = output.detach().flatten()
         mean = acts.mean().cpu().item()
         std = acts.std().cpu().item()
-        frac_dead = (acts.abs() < self.threshold_dead).sum().cpu().item() / len(
-            acts
-        )
+        frac_dead = (acts.abs() < self.threshold_dead).sum().cpu().item() / len(acts)
 
         self.hook.stats[self.name].append(ActivationStats(mean, std, frac_dead))
 
@@ -331,9 +323,7 @@ class CollectorGradientStats:
         std = vals.std().cpu().item()
         abs_perc90 = vals.abs().quantile(0.9).cpu().item()
         _max = vals.abs().max().cpu().item()
-        frac_dead = (vals.abs() < self.threshold_dead).sum().cpu().item() / len(
-            vals
-        )
+        frac_dead = (vals.abs() < self.threshold_dead).sum().cpu().item() / len(vals)
 
         self.hook.stats[self.name].append(
             GradientStats(mean, std, abs_perc90, _max, frac_dead)
@@ -349,22 +339,18 @@ class ModelTelemetry(nn.Module):
         parameters_every_n: int = 1,
         activations_every_n: int = 1,
         gradients_every_n: int = 1,
-        loss_names: T.Tuple[str] = ("loss",),
-        activations_name_patterns: T.Tuple[str] = None,
-        gradients_name_patterns: T.Tuple[str] = None,
-        parameters_name_patterns: T.Tuple[str] = None,
+        loss_names: tuple[str, ...] = ("loss",),
+        activations_name_patterns: tuple[str, ...] | None = None,
+        gradients_name_patterns: tuple[str, ...] | None = None,
+        parameters_name_patterns: tuple[str, ...] | None = None,
         max_depth_search: int = 3,
     ):
         super().__init__()
         self.model = model
 
         # loss bit
-        self.loss_history_train = LossHistory(
-            loss_train_every_n, names=loss_names
-        )
-        self.loss_history_test = LossHistory(
-            loss_test_every_n, names=loss_names
-        )
+        self.loss_history_train = LossHistory(loss_train_every_n, names=loss_names)
+        self.loss_history_test = LossHistory(loss_test_every_n, names=loss_names)
 
         # activations bit
         if activations_name_patterns is not None:
@@ -414,7 +400,7 @@ class ModelTelemetry(nn.Module):
 
     def draw_activation_stats(
         self,
-        figsize: T.Tuple[int, int] = (12, 8),
+        figsize: tuple[int, int] = (12, 8),
         yscale: str = "linear",
         leg_lw: float = 5.0,
     ):
@@ -447,7 +433,7 @@ class ModelTelemetry(nn.Module):
 
     def draw_gradient_stats(
         self,
-        figsize: T.Tuple[int, int] = (12, 15),
+        figsize: tuple[int, int] = (12, 15),
         yscale: str = "linear",
         leg_lw: float = 5.0,
     ):
@@ -510,15 +496,13 @@ class ModelTelemetry(nn.Module):
 
 
 class LossHistory:
-    def __init__(self, every_n: int = 1, names: T.Tuple[str] = ("loss",)):
+    def __init__(self, every_n: int = 1, names: tuple[str, ...] = ("loss",)):
         self.names = names
         self.history = []
         self.iter = []
         self.every_n = every_n
 
-    def __call__(
-        self, losses: T.Union[torch.Tensor, T.Tuple[torch.Tensor]], _iter: int
-    ):
+    def __call__(self, losses: torch.Tensor | tuple[torch.Tensor], _iter: int):
         if _iter % self.every_n != 0:
             return
         if isinstance(losses, torch.Tensor):
@@ -548,7 +532,7 @@ class LossHistory:
         self,
         label: str,
         window: int = 10,
-        figsize: T.Tuple[int, int] = (12, 4),
+        figsize: tuple[int, int] = (12, 4),
         yscale: str = "linear",
     ):
         df = self.get_df()
@@ -556,9 +540,7 @@ class LossHistory:
 
         for name in self.names:
             fig, ax = plt.subplots(figsize=figsize)
-            sns.lineplot(
-                data=df, x="iter", y=name, ax=ax, label=label, alpha=0.5
-            )
+            sns.lineplot(data=df, x="iter", y=name, ax=ax, label=label, alpha=0.5)
             sns.lineplot(
                 data=df_roll,
                 x="iter",

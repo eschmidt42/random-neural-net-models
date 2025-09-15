@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import typing as T
 
 import numpy as np
 import torch
@@ -20,12 +19,10 @@ def sigmoid_derivative(z: torch.Tensor) -> torch.Tensor:
     return exp / (1 + exp) ** 2
 
 
-class Rumelhart1986PerceptronClassifier(
-    base.BaseEstimator, base.ClassifierMixin
-):
+class Rumelhart1986PerceptronClassifier(base.BaseEstimator, base.ClassifierMixin):
     def __init__(
         self,
-        n_hidden: T.Tuple[int] = (10, 5),
+        n_hidden: tuple[int, ...] = (10, 5),
         eps: float = 0.1,
         alpha: float = 0.0,
         random_state: int = 42,
@@ -40,19 +37,21 @@ class Rumelhart1986PerceptronClassifier(
         self.alpha = alpha
 
     def _handle_Xy(
-        self, X: np.ndarray, y: np.ndarray = None
-    ) -> T.Tuple[torch.tensor, T.Optional[torch.tensor]]:
-        _X = torch.from_numpy(X).double()  # (N_samples, N_features)
+        self, X: np.ndarray | torch.Tensor, y: np.ndarray | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+        if isinstance(X, np.ndarray):
+            _X = torch.from_numpy(X).double()  # (N_samples, N_features)
+        else:
+            _X = X
+
         if y is None:
             return _X, None
         _y = torch.from_numpy(y).double()  # (N_samples,)
         return _X, _y
 
     @torch.no_grad()
-    def _forward(self, X: torch.tensor, training: bool = False) -> torch.tensor:
-        a = torch.concat(
-            (X, torch.ones((X.shape[0], 1), dtype=torch.double)), dim=1
-        )
+    def _forward(self, X: torch.Tensor, training: bool = False) -> torch.Tensor:
+        a = torch.concat((X, torch.ones((X.shape[0], 1), dtype=torch.double)), dim=1)
 
         if training:
             self.telemetry_["z"] = []
@@ -69,20 +68,17 @@ class Rumelhart1986PerceptronClassifier(
         return a
 
     @torch.no_grad()
-    def _backward(self, y_pred: torch.tensor, y: torch.tensor) -> None:
+    def _backward(self, y_pred: torch.Tensor, y: torch.Tensor) -> None:
         # MSE loss derivative
         delta = y_pred - y.view((-1, 1))
 
         # iterating through the layers in reverse order
         # from the output layer to the input layer
         ix_layers = list(range(len(self.weights_)))[::-1]
-        gradients = [None for _ in ix_layers]
-        if self.alpha > 0:
-            old_gradients = (
-                self.telemetry_["gradients"]
-                if "gradients" in self.telemetry_
-                else None
-            )
+        gradients: list[torch.Tensor] = []
+        old_gradients = None
+        if self.alpha > 0 and "gradients" in self.telemetry_:
+            old_gradients = self.telemetry_["gradients"]
 
         for i in ix_layers:
             z = self.telemetry_["z"][i]
@@ -92,7 +88,7 @@ class Rumelhart1986PerceptronClassifier(
 
             # part to be added to the weight for layer i
             dw = a.T @ delta
-            gradients[i] = dw
+            gradients.append(dw)
 
             w = self.weights_[i]
             delta = delta @ w.T
@@ -109,9 +105,7 @@ class Rumelhart1986PerceptronClassifier(
             self.telemetry_["gradients"] = gradients
 
     @torch.no_grad()
-    def fit(
-        self, X: np.ndarray, y: np.ndarray
-    ) -> "Rumelhart1986PerceptronClassifier":
+    def fit(self, X: np.ndarray, y: np.ndarray) -> "Rumelhart1986PerceptronClassifier":
         torch.manual_seed(self.random_state)
 
         self.units_ = (
@@ -122,22 +116,25 @@ class Rumelhart1986PerceptronClassifier(
             for i in range(len(self.units_) - 1)
         ]
         self.telemetry_ = dict()
-        self.errors_ = torch.zeros(
-            self.epochs, dtype=torch.float32
-        )  # (N_epochs,)
-        X, y = self._handle_Xy(X, y)
+        self.errors_ = torch.zeros(self.epochs, dtype=torch.float32)  # (N_epochs,)
+        _X, _y = self._handle_Xy(X, y)
+
+        if _y is None:
+            raise ValueError(
+                f"{_y=} is None, likely because of {y=} being None. Please pass a value for y to this method."
+            )
 
         for epoch in tqdm.tqdm(range(self.epochs), disable=not self.verbose):
-            y_pred = self._forward(X, training=True)
-            self._backward(y_pred, y)
-            self.errors_[epoch] = torch.mean((y_pred - y) ** 2)
+            y_pred = self._forward(_X, training=True)
+            self._backward(y_pred, _y)
+            self.errors_[epoch] = torch.mean((y_pred - _y) ** 2)
 
         return self
 
     @torch.no_grad()
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
-        X, _ = self._handle_Xy(X)
-        y_pred = self._forward(X, training=False)
+        _X, _ = self._handle_Xy(X)
+        y_pred = self._forward(_X, training=False)
         return y_pred.detach().numpy()
 
     @torch.no_grad()
@@ -163,7 +160,7 @@ class RumelhartBlock(nn.Module):
 class Rumelhart1986PytorchPerceptron(nn.Module):
     def __init__(
         self,
-        n_hidden: T.Tuple[int] = (10, 5, 1),
+        n_hidden: tuple[int, ...] = (10, 5, 1),
     ):
         super().__init__()
         self.n_hidden = n_hidden
@@ -175,9 +172,7 @@ class Rumelhart1986PytorchPerceptron(nn.Module):
 
         self.net = nn.Sequential(*components)
 
-    def forward(
-        self, input: T.Union[rnnm_data.XyBlock, rnnm_data.XBlock]
-    ) -> torch.Tensor:
+    def forward(self, input: rnnm_data.XyBlock | rnnm_data.XBlock) -> torch.Tensor:
         return self.net(input.x)
 
 
@@ -186,6 +181,8 @@ class BCELoss(torch_loss.BCELoss):
         super().__init__(*args, **kwargs)
 
     def forward(
-        self, inference: torch.Tensor, input: rnnm_data.XyBlock
+        self, input: torch.Tensor, target: rnnm_data.XyBlock | torch.Tensor
     ) -> torch.Tensor:
-        return super().forward(inference, input.y)
+        if isinstance(target, rnnm_data.XyBlock):
+            return super().forward(input, target.y)
+        return super().forward(input, target)

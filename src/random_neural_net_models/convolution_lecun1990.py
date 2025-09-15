@@ -1,11 +1,9 @@
 # -*- coding: utf-8 -*-
-import typing as T
 
 import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.nn.modules.loss as torch_loss
 from einops import rearrange
 from einops.layers.torch import Rearrange
 from torch.utils.data import Dataset
@@ -17,9 +15,7 @@ logger = utils.get_logger("convolution_lecun1990.py")
 
 
 class DigitsDataset(Dataset):
-    def __init__(
-        self, X: pd.DataFrame, y: pd.Series, edge: int = 28, f: float = 255.0
-    ):
+    def __init__(self, X: pd.DataFrame, y: pd.Series, edge: int = 28, f: float = 255.0):
         self.X = X
         self.y = y
         self.edge = edge
@@ -28,12 +24,10 @@ class DigitsDataset(Dataset):
     def __len__(self):
         return len(self.y)
 
-    def __getitem__(self, idx: int) -> T.Tuple[torch.Tensor, int]:
-        img = (
-            torch.from_numpy(self.X.iloc[idx].values / self.f)  # normalizing
-            .reshape(self.edge, self.edge)
-            .double()
-        )
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
+        vals = torch.from_numpy(self.X.iloc[idx].values)
+        vals = vals / self.f
+        img = vals.reshape(self.edge, self.edge).double()
         label = int(self.y.iloc[idx])
         return (img, label)
 
@@ -55,7 +49,12 @@ class Tanh(nn.Module):
         self.register_buffer("S", torch.tensor(S))
 
     def forward(self, x: torch.Tensor):
-        return self.A * torch.tanh(self.S * x)
+        if isinstance(self.A, torch.Tensor) and isinstance(self.S, torch.Tensor):
+            return self.A * torch.tanh(self.S * x)
+        else:
+            raise ValueError(
+                f"{type(self.A)=} and {type(self.S)=} should be tensors at the point."
+            )
 
 
 class Conv2d(torch.nn.Module):
@@ -90,11 +89,7 @@ class Conv2d(torch.nn.Module):
                 dtype=dtype,
             )
         )
-        self.bias = nn.Parameter(
-            torch.empty(1, n_out_channels, 1, 1, dtype=dtype)
-        )
-
-        # self.bias = rearrange(self.bias, "out_channels -> 1 out_channels 1 1")
+        self.bias = nn.Parameter(torch.empty(1, n_out_channels, 1, 1, dtype=dtype))
 
         if lecun_init:
             s = 2.4 / (n_in_channels * kernel_width * kernel_height)
@@ -111,9 +106,7 @@ class Conv2d(torch.nn.Module):
             padding=padding,
             stride=stride,
         )
-        out_h = out_w = calc_conv_output_dim(
-            edge, kernel_width, padding, stride
-        )
+        out_h = out_w = calc_conv_output_dim(edge, kernel_width, padding, stride)
         self.fold = torch.nn.Fold(
             output_size=(out_h, out_w),
             kernel_size=(1, 1),
@@ -129,9 +122,7 @@ class Conv2d(torch.nn.Module):
         # N = batch_size, C = in_channels, kh = kernel_height, kw = kernel_width
         input_unfolded = self.unfold(input)
 
-        input_unfolded = rearrange(
-            input_unfolded, "N r num_patches -> N num_patches r"
-        )
+        input_unfolded = rearrange(input_unfolded, "N r num_patches -> N num_patches r")
 
         output_unfolded = input_unfolded @ self.weight
         output_unfolded = rearrange(
@@ -225,5 +216,7 @@ class Model(nn.Module):
 
 
 class Model2(Model):
-    def forward(self, input: rnnm_data.MNISTBlockWithLabels):
-        return self.net(input.image)
+    def forward(self, x: rnnm_data.MNISTBlockWithLabels | torch.Tensor):
+        if isinstance(x, rnnm_data.MNISTBlockWithLabels):
+            return self.net(x.image)
+        return self.net(x)

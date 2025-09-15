@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import pickle
-import typing as T
+from typing import Generator
 
 import torch
 from torch.utils.data import Dataset
@@ -13,12 +13,10 @@ logger = utils.get_logger("mingpt.sorter")
 
 def generate_list_of_random_integers(
     num_digits: int, length: int, rng: torch.Generator
-) -> torch.Tensor:
+) -> Generator[torch.Tensor, None, None]:
     while True:
         # generate some random integers
-        inp = torch.randint(
-            num_digits, size=(length,), dtype=torch.long, generator=rng
-        )
+        inp = torch.randint(num_digits, size=(length,), dtype=torch.long, generator=rng)
         # half of the time let's try to boost the number of examples that
         # have a large number of repeats, as this is what the model seems to struggle
         # with later in training, and they are kind of rate
@@ -29,11 +27,11 @@ def generate_list_of_random_integers(
         yield inp
 
 
-def check_split(inp: torch.Tensor) -> gpt_utils.SETS:
+def check_split(inp: torch.Tensor) -> gpt_utils.SetsEnum:
     # figure out if this generated example is train or test based on its hash
     h = hash(pickle.dumps(inp.tolist()))
     return (
-        gpt_utils.SETS.test if h % 4 == 0 else gpt_utils.SETS.train
+        gpt_utils.SetsEnum.test if h % 4 == 0 else gpt_utils.SetsEnum.train
     )  # designate 25% of examples as test
 
 
@@ -49,7 +47,7 @@ class SortDataset(Dataset):
 
     def __init__(
         self,
-        split: gpt_utils.SETS,
+        split: gpt_utils.SetsEnum,
         length: int = 6,
         num_digits: int = 3,
         n_samples: int = 10_000,
@@ -73,16 +71,22 @@ class SortDataset(Dataset):
         # the transformer starts making predictions at the last input element
         return self.length * 2 - 1
 
-    def __getitem__(self, idx: int) -> T.Tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         # use rejection sampling to generate an input example from the desired split
         integer_generator = generate_list_of_random_integers(
             self.num_digits, self.length, self.rng
         )
+        inp = None
         for inp in integer_generator:
             inp_split = check_split(inp)
 
             if inp_split == self.split:
                 break  # ok
+
+        if inp is None:
+            raise ValueError(
+                f"Generation of random integers, unexpectly, did not produce any results."
+            )
 
         # solve the task: i.e. sort
         sol = torch.sort(inp)[0]

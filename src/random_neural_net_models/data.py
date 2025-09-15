@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-import typing as T
+
+
+from functools import partial
 
 import numpy as np
 import pandas as pd
@@ -9,7 +11,6 @@ import torch.nn.functional as F
 from einops import rearrange
 from tensordict import tensorclass
 from torch.utils.data import Dataset
-from functools import partial
 
 # ============================================
 # numpy tabular dataset
@@ -31,7 +32,7 @@ class NumpyTrainingDataset(Dataset):
     def __len__(self):
         return self.n
 
-    def __getitem__(self, idx: int) -> T.Tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         x = torch.from_numpy(self.X[[idx], :]).float()
         y = torch.tensor([self.y[idx]])
         y = rearrange(y, "n -> n 1")
@@ -46,9 +47,9 @@ class NumpyNumCatTrainingDataset(Dataset):
     X_cat: np.ndarray
     y: np.ndarray
     n: int
-    cat_maps: T.Dict[int, T.Dict[int, int]]
-    inv_cat_maps: T.Dict[int, T.Dict[int, int]]
-    cat_fallbacks: T.Dict[int, int]
+    cat_maps: dict[int, dict[int, int]]
+    inv_cat_maps: dict[int, dict[int, int]]
+    cat_fallbacks: dict[int, int]
 
     def __init__(self, X_numerical: np.ndarray, X_categorical, y: np.ndarray):
         self.X_num = X_numerical
@@ -96,13 +97,9 @@ class NumpyNumCatTrainingDataset(Dataset):
             dtype=np.integer,
         )
 
-    def __getitem__(
-        self, idx: int
-    ) -> T.Tuple[torch.Tensor, torch.LongTensor, torch.Tensor]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         x_num = torch.from_numpy(self.X_num[[idx], :]).float()
-        x_cat = torch.from_numpy(
-            self._map_cats_to_ids(self.X_cat[idx, :])
-        ).long()
+        x_cat = torch.from_numpy(self._map_cats_to_ids(self.X_cat[idx, :])).long()
         y = torch.tensor([self.y[idx]])
         y = rearrange(y, "n -> n 1")
 
@@ -115,9 +112,9 @@ class NumpyNumCatTrainingDatasetXOnly(Dataset):
     X_num: np.ndarray
     X_cat: np.ndarray
     n: int
-    cat_maps: T.Dict[int, T.Dict[int, int]]
-    inv_cat_maps: T.Dict[int, T.Dict[int, int]]
-    cat_fallbacks: T.Dict[int, int]
+    cat_maps: dict[int, dict[int, int]]
+    inv_cat_maps: dict[int, dict[int, int]]
+    cat_fallbacks: dict[int, int]
 
     def __init__(self, X_numerical: np.ndarray, X_categorical):
         self.X_num = X_numerical
@@ -158,16 +155,14 @@ class NumpyNumCatTrainingDatasetXOnly(Dataset):
             dtype=np.integer,
         )
 
-    def __getitem__(self, idx: int) -> T.Tuple[torch.Tensor, torch.LongTensor]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         x_num = torch.from_numpy(self.X_num[[idx], :]).float()
-        x_cat = torch.from_numpy(
-            self._map_cats_to_ids(self.X_cat[idx, :])
-        ).long()
+        x_cat = torch.from_numpy(self._map_cats_to_ids(self.X_cat[idx, :])).long()
 
         return x_num, x_cat
 
 
-def calc_n_categories_per_column(X_cat: np.ndarray) -> T.List[int]:
+def calc_n_categories_per_column(X_cat: np.ndarray) -> list[int]:
     # X_cat is expected to be an array of integers.
     # hence only values >= 0 count as a category and negative values indicate missingness
     unique_cats = [np.unique(X_cat[:, i]) for i in range(X_cat.shape[1])]
@@ -176,15 +171,13 @@ def calc_n_categories_per_column(X_cat: np.ndarray) -> T.List[int]:
 
 
 def get_index_ranges_from_n_cats_per_col(
-    n_categories_per_column: T.Iterable[int],
-) -> T.List[T.Tuple[int]]:
+    n_categories_per_column: tuple[int, ...],
+) -> list[tuple[int]]:
     if len(n_categories_per_column) == 0:
         msg = f"{n_categories_per_column=} must have at least one element"
         raise ValueError(msg)
     if any(v < 1 for v in n_categories_per_column):
-        msg = (
-            f"{n_categories_per_column=} must have only elements greater than 0"
-        )
+        msg = f"{n_categories_per_column=} must have only elements greater than 0"
         raise ValueError(msg)
 
     index_ranges = []
@@ -205,12 +198,12 @@ class XyBlock:
 @tensorclass
 class XyBlock_numcat:  # for separate numerical and categorical data in x
     x_numerical: torch.Tensor
-    x_categorical: torch.LongTensor
+    x_categorical: torch.Tensor
     y: torch.Tensor
 
 
 def collate_numpy_dataset_to_xyblock_template(
-    input: T.Tuple[torch.Tensor, torch.Tensor],
+    input: tuple[torch.Tensor, torch.Tensor],
     make_y_float: bool,
 ) -> XyBlock:
     x = torch.concat([v[0] for v in input]).float()
@@ -229,9 +222,9 @@ collate_numpy_dataset_to_xyblock_keep_orig_y = partial(
 
 
 def collate_numpy_numcat_dataset_to_xyblock_template(
-    input: T.Tuple[torch.Tensor, torch.LongTensor, torch.Tensor],
+    input: tuple[torch.Tensor, torch.LongTensor, torch.Tensor],
     make_y_float: bool,
-) -> XyBlock:
+) -> XyBlock_numcat:
     x_num = torch.concat([v[0] for v in input]).float()
     x_cat = torch.concat([v[1] for v in input]).long()
     y = torch.concat([v[2] for v in input])
@@ -272,7 +265,7 @@ class XBlock:
 @tensorclass
 class XBlock_numcat:  # for separate numerical and categorical data in x
     x_numerical: torch.Tensor
-    x_categorical: torch.LongTensor
+    x_categorical: torch.Tensor
 
 
 def collate_numpy_dataset_to_xblock(
@@ -284,7 +277,7 @@ def collate_numpy_dataset_to_xblock(
 
 
 def collate_numpy_numcat_dataset_to_xblock(
-    input: T.Tuple[torch.Tensor, torch.LongTensor],
+    input: tuple[torch.Tensor, torch.LongTensor],
 ) -> XBlock_numcat:
     x_num = torch.concat([v[0] for v in input]).float()
     x_cat = torch.concat([v[1] for v in input]).long()
@@ -307,7 +300,7 @@ class MNISTDatasetWithLabels(Dataset):
         f: float = 255.0,
         num_classes: int = 10,
         one_hot: bool = True,
-        transform: nn.Module = None,
+        transform: nn.Module | None = None,
         add_channel: bool = True,
     ):
         self.X = X
@@ -329,10 +322,10 @@ class MNISTDatasetWithLabels(Dataset):
     def __len__(self):
         return self.n
 
-    def __getitem__(self, idx: int) -> T.Tuple[torch.Tensor, torch.Tensor]:
-        img = torch.from_numpy(
-            self.X.iloc[idx].values / self.f
-        ).float()  # normalizing
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
+        vals = self.X.iloc[idx].values
+        vals = torch.from_numpy(vals)
+        img = (vals / self.f).float()  # normalizing
         if self.add_channel:
             img = rearrange(img, "(h w) -> 1 h w", h=self.edge, w=self.edge)
         else:
@@ -360,7 +353,7 @@ class MNISTBlockWithLabels:
 
 
 def collate_mnist_dataset_to_block_with_labels(
-    input: T.List[T.Tuple[torch.Tensor, torch.Tensor]],
+    input: list[tuple[torch.Tensor, torch.Tensor]],
 ) -> MNISTBlockWithLabels:
     images = torch.concat([v[0] for v in input])
     labels = torch.concat([v[1] for v in input])
@@ -389,7 +382,7 @@ class MNISTDatasetWithNoise(Dataset):
     def __len__(self):
         return self.n
 
-    def __getitem__(self, idx: int) -> T.Tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         img = self.images[idx]
         noise = self.noises[idx]
 
@@ -406,7 +399,7 @@ class MNISTBlockWithNoise:
 
 
 def collate_mnist_dataset_to_block_with_noise(
-    input: T.List[T.Tuple[torch.Tensor, torch.Tensor]],
+    input: list[tuple[torch.Tensor, torch.Tensor]],
 ) -> MNISTBlockWithNoise:
     images = torch.concat([v[0] for v in input])  # .float()
     noise_levels = torch.concat([v[1] for v in input])  # .float()
