@@ -654,7 +654,7 @@ class NoisyUNetModelTensordict(UNetModel):
         imgs: MNISTNoisyDataTrain | torch.Tensor,
         noise_levels: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        if isinstance(imgs, MNISTNoisyDataTrain):
+        if isinstance(imgs, MNISTNoisyDataTrain | rnnm_data.MNISTBlockWithNoise):
             return super().forward(imgs.noisy_image, imgs.noise_level)
         if noise_levels is None:
             raise ValueError(

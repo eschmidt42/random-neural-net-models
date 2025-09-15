@@ -51,9 +51,6 @@ class Events(Enum):
     after_epoch = "after_epoch"
 
 
-# TODO: add logging of activations, weights, gradient and losses using wandb
-
-
 def get_learner_name() -> str:
     return f"learner-{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.pt"
 

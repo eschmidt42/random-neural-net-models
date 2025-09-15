@@ -426,8 +426,6 @@ class ModelTelemetry(nn.Module):
         ax.set(title="fraction of dead neurons", xlabel="iter")
 
         axs[1].legend()
-        for leg_obj in axs[1].legend().legendHandles:
-            leg_obj.set_linewidth(leg_lw)
 
         plt.tight_layout()
 
@@ -470,9 +468,6 @@ class ModelTelemetry(nn.Module):
         for _name, _stats in self.gradients_history.stats.items():
             ax.plot([s.max for s in _stats], label=_name, alpha=0.5)
         ax.set(title="max(abs)", xlabel="iter", yscale=yscale)
-
-        for leg_obj in axs[2].legend().legendHandles:
-            leg_obj.set_linewidth(leg_lw)
 
         plt.tight_layout()
 
