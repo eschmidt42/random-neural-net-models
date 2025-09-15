@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-import typing as T
+
 from dataclasses import asdict
 
 from pydantic.dataclasses import dataclass
@@ -34,13 +34,13 @@ class TrainerConfig:
     max_iters: int | None = None
     batch_size: int = 64
     learning_rate: float = 3e-4
-    betas: T.Tuple[float, float] = (0.9, 0.95)
+    betas: tuple[float, float] = (0.9, 0.95)
     weight_decay: float = 0.1
     grad_norm_clip: float = 1.0
 
 
 def get_modified_config_dict(
-    config: T.Union[ModelConfig, TrainerConfig], verbose: bool = False, **kwargs
+    config: ModelConfig | TrainerConfig, verbose: bool = False, **kwargs
 ) -> dict:
     logger.info(f"modifying: {config} with {kwargs}")
     vals = asdict(config)
