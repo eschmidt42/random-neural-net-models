@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import typing as T
+import re
 
 import torch
 import torch.nn as nn
@@ -18,9 +18,9 @@ class Variational(nn.Module):
         n_latent: int,
         flatten_input: bool = True,
         unflatten_output: bool = True,
-        c: int = None,
-        w: int = None,
-        h: int = None,
+        c: int | None = None,
+        w: int | None = None,
+        h: int | None = None,
         post_bn: bool = True,
     ) -> None:
         super(Variational, self).__init__()
@@ -45,15 +45,13 @@ class Variational(nn.Module):
                 raise ValueError(
                     f"If unflatten_output is True, c, w, h must be specified, got {c=}, {w=}, {h=}."
                 )
-            self.flat2rectangle = Rearrange(
-                "b (c h w) -> b c h w", c=c, h=h, w=w
-            )
+            self.flat2rectangle = Rearrange("b (c h w) -> b c h w", c=c, h=h, w=w)
         else:
             self.flat2rectangle = nn.Identity()
 
     def forward(
         self, x: torch.Tensor
-    ) -> T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         x = self.rectangle2flat(x)
 
         mu = self.mu(x)
@@ -97,7 +95,7 @@ class CNNVariationalAutoEncoder(nn.Module):
 
     def forward(
         self, x: torch.Tensor
-    ) -> T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         x = self.encoder(x)
         z, mu, logvar = self.variational(x)
         x_hat = self.decoder(z)
@@ -150,7 +148,7 @@ class DenseVariationalAutoEncoder(nn.Module):
 
     def forward(
         self, x: torch.Tensor
-    ) -> T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         x = self.encoder(x)
         z, mu, logvar = self.variational(x)
         x_hat = self.decoder(z)
@@ -201,7 +199,7 @@ class CNNDenseVariationalAutoEncoder(nn.Module):
 
     def forward(
         self, x: torch.Tensor
-    ) -> T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         x = self.encoder(x)
         z, mu, logvar = self.variational(x)
         x_hat = self.decoder(z)
@@ -210,20 +208,24 @@ class CNNDenseVariationalAutoEncoder(nn.Module):
 
 class CNNDenseVariationalAutoEncoder2(CNNDenseVariationalAutoEncoder):
     def forward(
-        self, input: rnnm_data.MNISTBlockWithLabels
-    ) -> T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        return super().forward(input.image)
+        self, x: rnnm_data.MNISTBlockWithLabels | torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        if isinstance(x, rnnm_data.MNISTBlockWithLabels):
+            return super().forward(x.image)
+        return super().forward(x)
 
 
 class DenseVariationalAutoEncoder2(DenseVariationalAutoEncoder):
     def forward(
-        self, input: rnnm_data.MNISTBlockWithLabels
-    ) -> T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        return super().forward(input.image)
+        self, x: rnnm_data.MNISTBlockWithLabels | torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        if isinstance(x, rnnm_data.MNISTBlockWithLabels):
+            return super().forward(x.image)
+        return super().forward(x)
 
 
 def calc_distribution_divergence_loss(
-    input: T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor], x: torch.Tensor
+    input: tuple[torch.Tensor, torch.Tensor, torch.Tensor], x: torch.Tensor
 ) -> torch.Tensor:
     _, mu, logvar = input
     s = 1 + logvar - mu.pow(2) - logvar.exp()
@@ -231,7 +233,7 @@ def calc_distribution_divergence_loss(
 
 
 def calc_reconstruction_loss(
-    input: T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor],
+    input: tuple[torch.Tensor, torch.Tensor, torch.Tensor],
     x: torch.Tensor,
     is_sigmoid: bool = False,
 ) -> torch.Tensor:
@@ -243,23 +245,21 @@ def calc_reconstruction_loss(
 
 
 def calc_vae_loss(
-    input: T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor],
+    input: tuple[torch.Tensor, torch.Tensor, torch.Tensor],
     x: torch.Tensor,
     is_sigmoid: bool = False,
-) -> T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    reconstruction_loss = calc_reconstruction_loss(
-        input, x, is_sigmoid=is_sigmoid
-    )
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    reconstruction_loss = calc_reconstruction_loss(input, x, is_sigmoid=is_sigmoid)
     divergence_loss = calc_distribution_divergence_loss(input, x)
     total_loss = reconstruction_loss + divergence_loss
     return total_loss, reconstruction_loss, divergence_loss
 
 
 def calc_vae_test_loss(
-    model_output: T.List[T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor]],
+    model_output: list[tuple[torch.Tensor, torch.Tensor, torch.Tensor]],
     x: torch.Tensor,
     is_sigmoid: bool = False,
-) -> T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     x_hat = torch.cat([_x[0] for _x in model_output], dim=0)
     mu = torch.cat([_x[1] for _x in model_output], dim=0)
     logvar = torch.cat([_x[2] for _x in model_output], dim=0)
@@ -278,20 +278,15 @@ class VAELossMNIST(torch_loss._Loss):
 
     def forward(
         self,
-        inference: T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor],
+        inference: tuple[torch.Tensor, torch.Tensor, torch.Tensor],
         input: rnnm_data.MNISTBlockWithLabels,
     ) -> torch.Tensor:
         reconstruction_loss = calc_reconstruction_loss(
             inference, input.image, is_sigmoid=False
         )
-        divergence_loss = calc_distribution_divergence_loss(
-            inference, input.image
-        )
+        divergence_loss = calc_distribution_divergence_loss(inference, input.image)
         total_loss = reconstruction_loss + divergence_loss
         return total_loss
-
-
-import re
 
 
 def check_module_name_is_activation(name: str) -> bool:
@@ -303,6 +298,4 @@ def check_module_name_grad_relevant(name: str) -> bool:
     is_var_relevant = re.match(r"^mu|logvar|bn_post", name) is not None
     is_dec_relevant = re.match(r"^dec_(bn|deconv|dense)", name) is not None
     is_not_act = re.match(r".*act\d$", name) is None
-    return (
-        is_enc_relevant or is_var_relevant or is_dec_relevant
-    ) and is_not_act
+    return (is_enc_relevant or is_var_relevant or is_dec_relevant) and is_not_act
