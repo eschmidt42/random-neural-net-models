@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # based on https://github.com/fastai/course22p2/blob/master/nbs/26_diffusion_unet.ipynb
 import math
-import typing as T
+from typing import Iterator
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -47,9 +47,9 @@ class Attention2D(nn.Module):
     # based on https://github.com/fastai/course22p2/blob/master/nbs/28_diffusion-attn-cond.ipynb
     def __init__(self, n_cnn_channels: int, n_channels_per_head: int):
         super().__init__()
-        assert (
-            n_channels_per_head % n_channels_per_head == 0
-        ), f"{n_channels_per_head=} must be a multiple of {n_cnn_channels=}"
+        assert n_channels_per_head % n_channels_per_head == 0, (
+            f"{n_channels_per_head=} must be a multiple of {n_cnn_channels=}"
+        )
         self.n_heads = n_cnn_channels // n_channels_per_head
         logger.info(
             f"Attention for {n_cnn_channels=} with {n_channels_per_head=} -> {self.n_heads=}"
@@ -137,9 +137,7 @@ class ResBlock(nn.Module):
         self.idconv = (
             nn.Identity()
             if self.use_identity
-            else nn.Conv2d(
-                num_features_in, num_features_out, kernel_size=1, stride=1
-            )
+            else nn.Conv2d(num_features_in, num_features_out, kernel_size=1, stride=1)
         )
         self.attention = (
             nn.Identity()
@@ -243,7 +241,7 @@ class DownBlock(nn.Module):
 class UNetDown(nn.Module):
     def __init__(
         self,
-        num_features: T.Tuple[int],
+        num_features: tuple[int, ...],
         num_layers: int,
         num_emb: int,
         n_channels_per_head: int = 0,
@@ -273,7 +271,7 @@ class UNetDown(nn.Module):
             x = down_block(x, t)
         return x
 
-    def __iter__(self) -> T.Iterator[torch.Tensor]:
+    def __iter__(self) -> Iterator[torch.Tensor | nn.Module]:
         for down_block in self.down_blocks:
             yield down_block.saved_output
 
@@ -337,15 +335,13 @@ class UpBlock(nn.Module):
         if self.add_up:
             self.up = nn.Sequential(
                 nn.Upsample(scale_factor=2, mode="nearest"),
-                nn.Conv2d(
-                    num_features_out, num_features_out, kernel_size=3, padding=1
-                ),
+                nn.Conv2d(num_features_out, num_features_out, kernel_size=3, padding=1),
             )
         else:
             self.up = nn.Identity()
 
     def forward(
-        self, x_up: torch.Tensor, xs_down: T.List[torch.Tensor], t: torch.Tensor
+        self, x_up: torch.Tensor, xs_down: list[torch.Tensor], t: torch.Tensor
     ) -> torch.Tensor:
         x_glue = torch.cat([x_up, xs_down.pop()], dim=1)
         x = self.res_blocks[0](x_glue, t)
@@ -397,14 +393,17 @@ class UNetUp(nn.Module):
                 raise ValueError(f"unexpected case for {up_block=}")
 
             # n_out_up
-            down_input_conv = down_block.res_blocks[0].conv1[
-                2
-            ]  # (bn, act, conv)
+            down_input_conv = down_block.res_blocks[0].conv1[2]  # (bn, act, conv)
             n_out_up = down_input_conv.in_channels
 
             add_up = not is_final_layer
 
             num_resnet_layers = len(down_block.res_blocks)
+
+            if not isinstance(n_in_down, int):
+                raise ValueError(f"{n_in_down=} should be an integer here.")
+            if not isinstance(n_in_prev_up, int):
+                raise ValueError(f"{n_in_prev_up=} should be an integer here.")
 
             up_block = UpBlock(
                 n_in_down,
@@ -418,7 +417,7 @@ class UNetUp(nn.Module):
             self.ups.append(up_block)
 
     def forward(
-        self, x: torch.Tensor, saved: T.List[torch.Tensor], t: torch.Tensor
+        self, x: torch.Tensor, saved: list[torch.Tensor], t: torch.Tensor
     ) -> torch.Tensor:
         for upblock in self.ups:
             x = upblock(x, saved, t)
@@ -430,7 +429,7 @@ class UNetModel(nn.Module):
         self,
         in_channels: int = 1,
         out_channels: int = 1,
-        list_num_features: T.Tuple[int] = (8, 16),
+        list_num_features: tuple[int, ...] = (8, 16),
         num_layers: int = 2,
         max_emb_period: int = 10000,
         n_channels_per_head: int = 0,  # 0 = no attention
@@ -470,7 +469,7 @@ class UNetModel(nn.Module):
 
         self.setup_output(list_num_features, out_channels)
 
-    def setup_input(self, in_channels: int, list_num_features: T.Tuple[int]):
+    def setup_input(self, in_channels: int, list_num_features: tuple[int, ...]):
         if in_channels == 1:
             self.add_dim = Rearrange("b h w -> b 1 h w")
         else:
@@ -480,18 +479,12 @@ class UNetModel(nn.Module):
         self.conv_in = nn.Conv2d(
             in_channels, list_num_features[0], kernel_size=3, padding=1
         )
-        self.wrangle_input = nn.Sequential(
-            self.add_dim, self.add_padding, self.conv_in
-        )
+        self.wrangle_input = nn.Sequential(self.add_dim, self.add_padding, self.conv_in)
 
     def setup_embedding_projection(self):
         self.emb_bn = nn.BatchNorm1d(self.n_noise_level_input)
-        self.emb_dense1 = nn.Linear(
-            self.n_noise_level_input, self.n_noise_level_emb
-        )
-        self.emb_dense2 = nn.Linear(
-            self.n_noise_level_emb, self.n_noise_level_emb
-        )
+        self.emb_dense1 = nn.Linear(self.n_noise_level_input, self.n_noise_level_emb)
+        self.emb_dense2 = nn.Linear(self.n_noise_level_emb, self.n_noise_level_emb)
 
         self.emb_mlp = nn.Sequential(
             self.emb_bn,
@@ -501,7 +494,7 @@ class UNetModel(nn.Module):
             self.emb_dense2,
         )
 
-    def setup_output(self, list_num_features: T.Tuple[int], out_channels: int):
+    def setup_output(self, list_num_features: tuple[int], out_channels: int):
         self.bn_out, self.act_out, self.conv_out = unet.get_conv_pieces(
             list_num_features[0], out_channels, kernel_size=1, stride=1
         )
@@ -521,9 +514,7 @@ class UNetModel(nn.Module):
             self.rm_padding,
         )
 
-    def forward(
-        self, imgs: torch.Tensor, noise_levels: torch.Tensor
-    ) -> torch.Tensor:
+    def forward(self, imgs: torch.Tensor, noise_levels: torch.Tensor) -> torch.Tensor:
         # input image
         x = self.wrangle_input(imgs)
         saved = [x]
@@ -554,11 +545,11 @@ class UNetModel(nn.Module):
 
 
 def list_of_tuples_to_tensors(
-    batch: T.List[T.Tuple[torch.Tensor, int]],
-) -> T.Tuple[torch.Tensor, torch.Tensor]:
+    batch: list[tuple[torch.Tensor, int]],
+) -> tuple[torch.Tensor, torch.Tensor]:
     images, labels = zip(*batch)
     images = torch.stack(images)
-    labels = torch.tensor(labels, dtype=int)
+    labels = torch.tensor(labels, dtype=torch.int)
     return images, labels
 
 
@@ -567,7 +558,7 @@ SIG_DATA = 0.66
 
 def get_cs(
     noise_level: torch.Tensor,
-) -> T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     # TODO: wtf is happening here?
     totvar = noise_level**2 + SIG_DATA**2
     c_skip = SIG_DATA**2 / totvar
@@ -586,14 +577,18 @@ def draw_noise_level_from_noise_prior(n: int) -> torch.Tensor:
 
 def draw_img_noise_given_noise_level(
     sig: torch.Tensor,
-    images: torch.Tensor = None,
-    images_shape: T.Tuple[int, int, int] = None,
+    images: torch.Tensor | None = None,
+    images_shape: tuple[int, int, int] | None = None,
 ) -> torch.Tensor:
     "Draws noise from a normal distribution given the noise level (sig)"
     if images is not None:
-        images_shape = images.shape
+        _images_shape = images.shape
+    else:
+        if images_shape is None:
+            raise ValueError(f"{images_shape=} needs to be provided if `images` isn't.")
+        _images_shape = images_shape
 
-    img_noise = torch.randn(images_shape)
+    img_noise = torch.randn(_images_shape)
     img_noise = img_noise * sig
     return img_noise
 
@@ -603,8 +598,8 @@ def fudge_original_images(images: torch.Tensor) -> torch.Tensor:
 
 
 def apply_noise(
-    batch: T.List[T.Tuple[torch.Tensor, int]],
-) -> T.Tuple[T.Tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
+    batch: list[tuple[torch.Tensor, int]],
+) -> tuple[tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
     "Applies noise to the input image and returns the noisy image, the noise level and the de-noised image"
 
     orig_images, _ = list_of_tuples_to_tensors(batch)
@@ -637,7 +632,7 @@ class MNISTNoisyDataTrain:
 
 
 def mnist_noisy_collate_train(
-    batch: T.List[T.Tuple[torch.Tensor, int]],
+    batch: list[tuple[torch.Tensor, int]],
 ) -> MNISTNoisyDataTrain:
     (noisy_images, noise_level), target_noise = apply_noise(batch)
 
@@ -647,13 +642,25 @@ def mnist_noisy_collate_train(
 
 
 class UNetModelTensordict(unet.UNetModel):
-    def forward(self, input: MNISTNoisyDataTrain) -> torch.Tensor:
-        return super().forward(input.noisy_image)
+    def forward(self, x: MNISTNoisyDataTrain | torch.Tensor) -> torch.Tensor:
+        if isinstance(x, MNISTNoisyDataTrain):
+            return super().forward(x.noisy_image)
+        return super().forward(x)
 
 
 class NoisyUNetModelTensordict(UNetModel):
-    def forward(self, input: MNISTNoisyDataTrain) -> torch.Tensor:
-        return super().forward(input.noisy_image, input.noise_level)
+    def forward(
+        self,
+        imgs: MNISTNoisyDataTrain | torch.Tensor,
+        noise_levels: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        if isinstance(imgs, MNISTNoisyDataTrain):
+            return super().forward(imgs.noisy_image, imgs.noise_level)
+        if noise_levels is None:
+            raise ValueError(
+                f"{type(imgs)=} is not a tensordict, so the `noise_levels` parameter needs to be provided."
+            )
+        return super().forward(imgs, noise_levels)
 
 
 def get_denoised_images(
@@ -669,9 +676,9 @@ def compare_input_noise_and_denoised_image(
     noisy_image: torch.Tensor,
     noise: torch.Tensor,
     denoised_image: torch.Tensor,
-    bin_bounds: T.Tuple[int, int] = (-3, 3),
-    figsize: T.Tuple[int, int] = (10, 10),
-    title: str = None,
+    bin_bounds: tuple[int, int] = (-3, 3),
+    figsize: tuple[int, int] = (10, 10),
+    title: str | None = None,
 ):
     fig, axs = plt.subplots(nrows=3, ncols=2, figsize=figsize)
 
@@ -712,19 +719,17 @@ def compare_input_noise_and_denoised_image(
 
 
 def denoise_with_model(
-    model: T.Union[telemetry.ModelTelemetry, rnnm_learner.Learner],
+    model: telemetry.ModelTelemetry | rnnm_learner.Learner,
     images: torch.Tensor,
     noise_levels: torch.Tensor,
-) -> T.Tuple[T.List[torch.Tensor], T.List[torch.Tensor]]:
+) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
     "Denoises an image with the model for a range of noise levels"
     noise_preds = []
     denoised_preds = []
-    for noise_level in tqdm.tqdm(
-        noise_levels, total=len(noise_levels), desc="Sigmas"
-    ):
+    for noise_level in tqdm.tqdm(noise_levels, total=len(noise_levels), desc="Sigmas"):
         levels = noise_level.repeat(images.shape[0])
 
-        c_skip, c_out, c_in = get_cs(levels.reshape(-1, 1, 1))
+        _, _, c_in = get_cs(levels.reshape(-1, 1, 1))
         images = images * c_in
 
         if isinstance(model, telemetry.ModelTelemetry):
@@ -744,9 +749,7 @@ def denoise_with_model(
         else:
             raise ValueError(f"Unexpected type for {model=}")
 
-        images = get_denoised_images(
-            images, pred_noise, levels.reshape(-1, 1, 1)
-        )
+        images = get_denoised_images(images, pred_noise, levels.reshape(-1, 1, 1))
 
         noise_preds.append(pred_noise.detach().cpu())
         denoised_preds.append(images.detach().cpu())
@@ -758,6 +761,8 @@ class MSELossMNISTNoisy(torch_loss.MSELoss):
         super().__init__(*args, **kwargs)
 
     def forward(
-        self, inference: torch.Tensor, input: MNISTNoisyDataTrain
+        self, input: torch.Tensor, target: MNISTNoisyDataTrain | torch.Tensor
     ) -> torch.Tensor:
-        return super().forward(inference, input.target_noise)
+        if isinstance(target, MNISTNoisyDataTrain):
+            return super().forward(input, target.target_noise)
+        return super().forward(input, target)
