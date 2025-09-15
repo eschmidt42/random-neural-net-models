@@ -135,7 +135,8 @@ class AdditionDataset(Dataset):
     def __getitem__(self, idx: int):
         ndigit = self.config.ndigit  # 2
 
-        a, b, c = get_abc(self.ixes[idx].item(), ndigit)  # 1, 1, 2
+        idx = int(self.ixes[idx].item())
+        a, b, c = get_abc(idx, ndigit)  # 1, 1, 2
 
         dix = encode_addition_problem(a, b, c, ndigit)  # [0,1,0,1,2,0,0]
 
