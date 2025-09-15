@@ -35,9 +35,7 @@ def collate_named_modules(
 
     for child_name, child_module in module.named_children():
         child_name = (
-            f"{module_name}.{child_name}"
-            if module_name is not None
-            else child_name
+            f"{module_name}.{child_name}" if module_name is not None else child_name
         )
         collated_named_modules.append(NamedModule(child_name, child_module))
 
@@ -69,20 +67,14 @@ def find_named_module(
 class ChildSearch:
     def __init__(self, module: nn.Module, max_depth: int = 3):
         self.module = module
-        self.collated_named_modules = collate_named_modules(
-            module, max_depth=max_depth
-        )
+        self.collated_named_modules = collate_named_modules(module, max_depth=max_depth)
 
-    def __call__(self, *patterns: T.Tuple[str]) -> T.List[NamedModule]:
+    def __call__(self, *patterns: str) -> list[NamedModule]:
         matches = []
         for pattern in patterns:
-            matches.extend(
-                find_named_module(self.collated_named_modules, pattern)
-            )
+            matches.extend(find_named_module(self.collated_named_modules, pattern))
         return matches
 
     @property
     def names(self) -> T.List[str]:
-        return [
-            named_module.name for named_module in self.collated_named_modules
-        ]
+        return [named_module.name for named_module in self.collated_named_modules]

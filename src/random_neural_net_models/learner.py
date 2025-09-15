@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import datetime
-import typing as T
 from dataclasses import asdict
 from enum import Enum
 from pathlib import Path
@@ -67,7 +66,7 @@ class Learner:
     losses: torch.Tensor
     smooth_loss: torch.Tensor
     smooth_count: int
-    save_dir: Path
+    save_dir: Path | None
     loss_valid: torch.Tensor
     device: str
 
@@ -76,8 +75,8 @@ class Learner:
         model: nn.Module,
         optimizer: Optimizer,
         loss_func: torch_loss._Loss,
-        callbacks: T.List[Callback] = None,
-        save_dir: Path = None,
+        callbacks: list[Callback] | None = None,
+        save_dir: Path | None = None,
         device: str = "cpu",
         show_fit_progress: bool = True,
         show_epoch_progress: bool = False,
@@ -87,9 +86,10 @@ class Learner:
         self.loss_func = loss_func
         self.register_callbacks(callbacks)
 
-        self.save_dir = (
-            save_dir.resolve().absolute() if save_dir is not None else None
-        )
+        if save_dir is not None:
+            self.save_dir = save_dir.resolve().absolute()
+        else:
+            self.save_dir = None
         self.device = device
 
         self.iteration = 0
@@ -100,7 +100,7 @@ class Learner:
         self.show_fit_progress = show_fit_progress
         self.show_epoch_progress = show_epoch_progress
 
-    def register_callbacks(self, callbacks: T.List[Callback]):
+    def register_callbacks(self, callbacks: list[Callback]):
         if callbacks is None:
             self.registered_callbacks = {}
         else:
@@ -129,9 +129,7 @@ class Learner:
 
     # TODO: this does not produce the expected loss vs lr curve for rumelhart nb - is this correct?
     def _update_smooth_loss(self):
-        self.losses = torch.cat(
-            (self.losses, torch.tensor([self.loss.detach().cpu()]))
-        )
+        self.losses = torch.cat((self.losses, torch.tensor([self.loss.detach().cpu()])))
 
         beta = 0.98
         self.smooth_count += 1
@@ -161,7 +159,7 @@ class Learner:
             return self.loss_func(inference, tensordict)
 
     def do_epoch(
-        self, dataloader_train: DataLoader, dataloader_valid: DataLoader = None
+        self, dataloader_train: DataLoader, dataloader_valid: DataLoader | None = None
     ):
         self.batch = 0
         total = (
@@ -193,9 +191,7 @@ class Learner:
                 total=total,
                 disable=not self.show_epoch_progress,
             ):
-                losses_valid.append(
-                    self.do_batch_valid(tensordict.to(self.device))
-                )
+                losses_valid.append(self.do_batch_valid(tensordict.to(self.device)))
             self.loss_valid = torch.tensor(losses_valid).mean().cpu()
 
         self.callback(Events.after_epoch)
@@ -204,13 +200,13 @@ class Learner:
         self,
         dataloader_train: DataLoader,
         n_epochs: int,
-        dataloader_valid: DataLoader = None,
-        callbacks: T.List[Callback] = None,
+        dataloader_valid: DataLoader | None = None,
+        callbacks: list[Callback] | None = None,
     ):
-        if callbacks is not None:
-            logger.info(
-                f"replacing {self.registered_callbacks=} with {callbacks=}"
-            )
+        use_callbacks = callbacks is not None
+        registered_callbacks = None
+        if use_callbacks:
+            logger.info(f"replacing {self.registered_callbacks=} with {callbacks=}")
             registered_callbacks = self.registered_callbacks
             self.register_callbacks(callbacks)
 
@@ -223,15 +219,13 @@ class Learner:
             disable=not self.show_fit_progress,
         ):
             try:
-                self.do_epoch(
-                    dataloader_train, dataloader_valid=dataloader_valid
-                )
+                self.do_epoch(dataloader_train, dataloader_valid=dataloader_valid)
             except CancelFitException:
                 break
 
         self.callback(Events.after_train)
 
-        if callbacks is not None:
+        if use_callbacks:
             logger.info(f"restoring {registered_callbacks=}")
             self.registered_callbacks = registered_callbacks
 
@@ -252,18 +246,18 @@ class Learner:
     def predict(
         self,
         dataloader: DataLoader,
-        component: T.Union[int, T.Tuple[int]] = None,
+        component: int | tuple[int] | None = None,
         return_inputs: bool = False,
-    ) -> torch.Tensor:
+    ) -> (
+        torch.Tensor
+        | list[torch.Tensor]
+        | tuple[torch.Tensor | list[torch.Tensor], torch.Tensor]
+    ):
         self.model.eval()
         self.model.to(self.device)
         inference = []
         inputs = []
-        total = (
-            None
-            if not hasattr(dataloader.dataset, "__len__")
-            else len(dataloader)
-        )
+        total = None if not hasattr(dataloader.dataset, "__len__") else len(dataloader)
         for tensordict in tqdm.tqdm(dataloader, total=total, desc="batch"):
             inference.append(self.model(tensordict.to(self.device)))
             if return_inputs:
@@ -326,12 +320,12 @@ class Loss:
     batch: int
     epoch: int
     loss: float
-    loss_valid: float = None
+    loss_valid: float | None = None
 
 
 class TrainLossCallback(Callback):
     enum = CallbackEnum.train_loss
-    losses: T.List[Loss]
+    losses: list[Loss]
 
     def __init__(self):
         self.losses = []
@@ -357,9 +351,7 @@ class TrainLossCallback(Callback):
     def get_losses_valid(self) -> pd.DataFrame:
         return self.get_losses().loc[self.get_losses()["loss_valid"].notna(), :]
 
-    def plot(
-        self, window: int = 10, window_valid: int = 5, yscale: float = "linear"
-    ):
+    def plot(self, window: int = 10, window_valid: int = 5, yscale: str = "linear"):
         fig, ax = plt.subplots(figsize=(10, 4))
         losses = self.get_losses()
         sns.scatterplot(
@@ -384,9 +376,9 @@ class TrainLossCallback(Callback):
 
         losses_valid = self.get_losses_valid()
         if len(losses_valid) > 0:
-            losses_valid["loss_rolling"] = losses_valid.rolling(
-                window=window_valid
-            )["loss_valid"].mean()
+            losses_valid["loss_rolling"] = losses_valid.rolling(window=window_valid)[
+                "loss_valid"
+            ].mean()
             sns.scatterplot(
                 data=losses_valid,
                 x="iteration",
@@ -416,13 +408,13 @@ class TrainActivationsCallback(Callback):
     enum = CallbackEnum.train_activations
     activations_history: rnnm_telemetry.ActivationsHistory
     every_n: int
-    name_patterns: T.List[str]
+    name_patterns: tuple[str] | None
     max_depth_search: int
 
     def __init__(
         self,
         every_n: int = 1,
-        name_patterns: T.List[str] = None,
+        name_patterns: tuple[str] | None = None,
         max_depth_search: int = 1,
     ):
         self.every_n = every_n
@@ -462,9 +454,7 @@ class TrainActivationsCallback(Callback):
         sns.lineplot(data=activations, x="call", y="std", hue="name", ax=ax)
 
         ax = axs[2]
-        sns.lineplot(
-            data=activations, x="call", y="frac_dead", hue="name", ax=ax
-        )
+        sns.lineplot(data=activations, x="call", y="frac_dead", hue="name", ax=ax)
         ax.get_legend().remove()
 
         plt.tight_layout()
@@ -474,13 +464,13 @@ class TrainGradientsCallback(Callback):
     enum = CallbackEnum.train_gradients
     gradients_history: rnnm_telemetry.GradientsHistory
     every_n: int
-    name_patterns: T.List[str]
+    name_patterns: tuple[str] | None
     max_depth_search: int
 
     def __init__(
         self,
         every_n: int = 1,
-        name_patterns: T.List[str] = None,
+        name_patterns: tuple[str] | None = None,
         max_depth_search: int = 1,
     ):
         self.every_n = every_n
@@ -523,9 +513,7 @@ class TrainGradientsCallback(Callback):
         ax.get_legend().remove()
 
         ax = axs[3]
-        sns.lineplot(
-            data=gradients, x="call", y="abs_perc90", hue="name", ax=ax
-        )
+        sns.lineplot(data=gradients, x="call", y="abs_perc90", hue="name", ax=ax)
         ax.get_legend().remove()
 
         plt.tight_layout()
@@ -535,13 +523,13 @@ class TrainParametersCallback(Callback):
     enum = CallbackEnum.train_parameters
     parameters_history: rnnm_telemetry.ParametersHistory
     every_n: int
-    name_patterns: T.List[str]
+    name_patterns: tuple[str] | None
     max_depth_search: int
 
     def __init__(
         self,
         every_n: int = 1,
-        name_patterns: T.List[str] = None,
+        name_patterns: tuple[str] | None = None,
         max_depth_search: int = 1,
     ):
         self.every_n = every_n
@@ -582,9 +570,7 @@ class TrainParametersCallback(Callback):
         sns.lineplot(data=parameters, x="iter", y="std", hue="name", ax=ax)
 
         ax = axs[2]
-        sns.lineplot(
-            data=parameters, x="iter", y="abs_perc90", hue="name", ax=ax
-        )
+        sns.lineplot(data=parameters, x="iter", y="abs_perc90", hue="name", ax=ax)
         ax.get_legend().remove()
 
         plt.tight_layout()
@@ -602,7 +588,7 @@ class LossWithLR:
 
 class LRFinderCallback(Callback):
     enum = CallbackEnum.lr_finder
-    losses: T.List[LossWithLR]
+    losses: list[LossWithLR]
 
     def __init__(
         self,
@@ -666,13 +652,11 @@ class LRFinderCallback(Callback):
     def plot(
         self,
         yscale: str = "linear",
-        ylim: T.Tuple[T.Union[int, float], T.Union[int, float]] = None,
+        ylim: tuple[int | float, int | float] | None = None,
     ):
         fig, ax = plt.subplots(figsize=(12, 4))
         lr_find_data = self.get_losses()
-        sns.lineplot(
-            data=lr_find_data, x="lr", y="smooth_loss", ax=ax, label="smooth"
-        )
+        sns.lineplot(data=lr_find_data, x="lr", y="smooth_loss", ax=ax, label="smooth")
         sns.lineplot(
             data=lr_find_data,
             x="lr",
