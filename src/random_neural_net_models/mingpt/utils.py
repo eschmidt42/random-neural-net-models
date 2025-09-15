@@ -4,18 +4,15 @@ import json
 import os
 import random
 import sys
-from enum import Enum
+from enum import StrEnum
 
 import numpy as np
 import torch
 
-# Create a named Enum class so multiprocessing's pickler can import it by name.
-# multiprocessing/pickle will try to look up the class as an attribute on the
-# module (e.g. random_neural_net_models.mingpt.utils.Sets). Defining the
-# class as `Sets` at module-level makes it importable/picklable. Keep the
-# uppercase `SETS` alias for backwards compatibility with existing code.
-Sets = Enum("Sets", "train test")
-SETS = Sets
+
+class SetsEnum(StrEnum):
+    train = "train"
+    test = "test"
 
 
 def set_seed(seed):

@@ -79,7 +79,7 @@ class BCELoss(torch_loss.BCELoss):
 
 
 @pytest.mark.parametrize("use_callbacks", [True, False])
-def test_learner(use_callbacks: bool):
+def test_learner(use_callbacks: bool, tmp_path: Path):
     "The test succeeds if the below executes without error"
 
     X, y = sk_datasets.make_blobs(
@@ -119,9 +119,8 @@ def test_learner(use_callbacks: bool):
     loss = BCELoss()
     loss_callback = rnnm_learner.TrainLossCallback()
 
-    save_dir = Path(
-        f"./test-models-cb-{use_callbacks}"
-    )  # location used by learner.find_learning_rate to store the model before the search
+    # location used by learner.find_learning_rate to store the model before the search
+    save_dir = tmp_path / f"./test-models-cb-{use_callbacks}"
 
     # the following callbacks are not strictly necessary for learning rate search and
     # training, but may make debugging of slow / unexpected training easier
