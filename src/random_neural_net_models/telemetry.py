@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import typing as T
+
 from collections import defaultdict
 from dataclasses import dataclass
 
@@ -60,13 +60,13 @@ class ActivationsHistory(History):
     ):
         super().__init__(model, every_n, name_patterns, max_depth_search)
 
-        self.stats: T.Dict[str, T.List[ActivationStats]] = defaultdict(list)
+        self.stats: dict[str, list[ActivationStats]] = defaultdict(list)
         self.register_hooks(model, name_patterns, max_depth_search)
 
     def register_hooks(
         self,
         model: nn.Module,
-        name_patterns: T.Tuple[str] = None,
+        name_patterns: tuple[str, ...] | None = None,
         max_depth_search: int = 3,
     ):
         self.hooks = defaultdict(None)
@@ -93,13 +93,13 @@ class GradientsHistory(History):
         max_depth_search: int = 3,
     ):
         super().__init__(model, every_n, name_patterns, max_depth_search)
-        self.stats: T.Dict[str, T.List[ParameterStats]] = defaultdict(list)
+        self.stats: dict[str, list[ParameterStats]] = defaultdict(list)
         self.register_hooks(model, name_patterns, max_depth_search)
 
     def register_hooks(
         self,
         model: nn.Module,
-        name_patterns: T.Tuple[str] | None = None,
+        name_patterns: tuple[str] | None = None,
         max_depth_search: int = 3,
     ):
         self.child_search = search.ChildSearch(model, max_depth=max_depth_search)
@@ -156,7 +156,7 @@ class ParametersHistory(History):
     def draw(
         self,
         name: str,
-        figsize: T.Tuple[int, int] = (12, 7),
+        figsize: tuple[int, int] = (12, 7),
     ) -> None:
         if self.not_initialized:
             logger.info("Not drawing parameter history.")
@@ -233,7 +233,7 @@ class ParametersHistory(History):
         plt.tight_layout()
         plt.show()
 
-    def get_df(self, name: str) -> pd.DataFrame:
+    def get_df(self, name: str) -> pd.DataFrame | None:
         if self.not_initialized:
             logger.info("Not getting parameter history.")
             return
@@ -339,10 +339,10 @@ class ModelTelemetry(nn.Module):
         parameters_every_n: int = 1,
         activations_every_n: int = 1,
         gradients_every_n: int = 1,
-        loss_names: T.Tuple[str] = ("loss",),
-        activations_name_patterns: T.Tuple[str] = None,
-        gradients_name_patterns: T.Tuple[str] = None,
-        parameters_name_patterns: T.Tuple[str] = None,
+        loss_names: tuple[str, ...] = ("loss",),
+        activations_name_patterns: tuple[str, ...] | None = None,
+        gradients_name_patterns: tuple[str, ...] | None = None,
+        parameters_name_patterns: tuple[str, ...] | None = None,
         max_depth_search: int = 3,
     ):
         super().__init__()
@@ -400,7 +400,7 @@ class ModelTelemetry(nn.Module):
 
     def draw_activation_stats(
         self,
-        figsize: T.Tuple[int, int] = (12, 8),
+        figsize: tuple[int, int] = (12, 8),
         yscale: str = "linear",
         leg_lw: float = 5.0,
     ):
@@ -433,7 +433,7 @@ class ModelTelemetry(nn.Module):
 
     def draw_gradient_stats(
         self,
-        figsize: T.Tuple[int, int] = (12, 15),
+        figsize: tuple[int, int] = (12, 15),
         yscale: str = "linear",
         leg_lw: float = 5.0,
     ):
@@ -496,15 +496,13 @@ class ModelTelemetry(nn.Module):
 
 
 class LossHistory:
-    def __init__(self, every_n: int = 1, names: T.Tuple[str] = ("loss",)):
+    def __init__(self, every_n: int = 1, names: tuple[str, ...] = ("loss",)):
         self.names = names
         self.history = []
         self.iter = []
         self.every_n = every_n
 
-    def __call__(
-        self, losses: T.Union[torch.Tensor, T.Tuple[torch.Tensor]], _iter: int
-    ):
+    def __call__(self, losses: torch.Tensor | tuple[torch.Tensor], _iter: int):
         if _iter % self.every_n != 0:
             return
         if isinstance(losses, torch.Tensor):
@@ -534,7 +532,7 @@ class LossHistory:
         self,
         label: str,
         window: int = 10,
-        figsize: T.Tuple[int, int] = (12, 4),
+        figsize: tuple[int, int] = (12, 4),
         yscale: str = "linear",
     ):
         df = self.get_df()
