@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import pickle
-import typing as T
+from typing import Generator
 
 import torch
 from torch.utils.data import Dataset
@@ -13,7 +13,7 @@ logger = utils.get_logger("mingpt.sorter")
 
 def generate_list_of_random_integers(
     num_digits: int, length: int, rng: torch.Generator
-) -> torch.Tensor:
+) -> Generator[torch.Tensor, None, None]:
     while True:
         # generate some random integers
         inp = torch.randint(num_digits, size=(length,), dtype=torch.long, generator=rng)
@@ -71,16 +71,22 @@ class SortDataset(Dataset):
         # the transformer starts making predictions at the last input element
         return self.length * 2 - 1
 
-    def __getitem__(self, idx: int) -> T.Tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         # use rejection sampling to generate an input example from the desired split
         integer_generator = generate_list_of_random_integers(
             self.num_digits, self.length, self.rng
         )
+        inp = None
         for inp in integer_generator:
             inp_split = check_split(inp)
 
             if inp_split == self.split:
                 break  # ok
+
+        if inp is None:
+            raise ValueError(
+                f"Generation of random integers, unexpectly, did not produce any results."
+            )
 
         # solve the task: i.e. sort
         sol = torch.sort(inp)[0]
