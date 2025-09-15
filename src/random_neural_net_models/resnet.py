@@ -1,30 +1,26 @@
 # -*- coding: utf-8 -*-
 # based on https://github.com/fastai/course22p2/blob/master/nbs/13_resnet.ipynb
-import typing as T
+
 
 import torch
 import torch.nn as nn
 import torchinfo
 from einops.layers.torch import Rearrange
 
-import random_neural_net_models.data as rnnm_data
 import random_neural_net_models.utils as utils
+from random_neural_net_models.data import MNISTBlockWithLabels
 
 logger = utils.get_logger("resnet.py")
 
 
 class ResBlock(nn.Module):
-    def __init__(self, ni, nf, stride=1, ks=3):
+    def __init__(self, ni: int, nf: int, stride: int = 1, ks: int = 3):
         super().__init__()
-        self.conv1 = nn.Conv2d(
-            ni, nf, kernel_size=ks, stride=1, padding=ks // 2
-        )
+        self.conv1 = nn.Conv2d(ni, nf, kernel_size=ks, stride=1, padding=ks // 2)
         self.bn1 = nn.BatchNorm2d(nf)
         self.act1 = nn.ReLU()
 
-        self.conv2 = nn.Conv2d(
-            nf, nf, kernel_size=ks, stride=stride, padding=ks // 2
-        )
+        self.conv2 = nn.Conv2d(nf, nf, kernel_size=ks, stride=stride, padding=ks // 2)
         self.bn2 = nn.BatchNorm2d(nf)
 
         self.convs = nn.Sequential(
@@ -36,13 +32,9 @@ class ResBlock(nn.Module):
         )
 
         self.idconv = (
-            nn.Identity()
-            if ni == nf
-            else nn.Conv2d(ni, nf, kernel_size=1, stride=1)
+            nn.Identity() if ni == nf else nn.Conv2d(ni, nf, kernel_size=1, stride=1)
         )
-        self.pool = (
-            nn.Identity() if stride == 1 else nn.AvgPool2d(2, ceil_mode=True)
-        )
+        self.pool = nn.Identity() if stride == 1 else nn.AvgPool2d(2, ceil_mode=True)
         self.idconvs = nn.Sequential(self.idconv, self.pool)
         self.act_out = nn.ReLU()
 
@@ -55,7 +47,7 @@ class ResBlock(nn.Module):
 class ResNet(nn.Module):
     def __init__(
         self,
-        nfs: T.Tuple[int] = (8, 16, 32, 64, 128, 256),
+        nfs: tuple[int, ...] = (8, 16, 32, 64, 128, 256),
         ks: int = 3,
         n_classes: int = 10,
     ):
@@ -85,5 +77,7 @@ class ResNet(nn.Module):
 
 
 class ResNet2(ResNet):
-    def forward(self, input: rnnm_data.MNISTBlockWithLabels) -> torch.Tensor:
-        return self.net(input.image)
+    def forward(self, x: MNISTBlockWithLabels | torch.Tensor) -> torch.Tensor:
+        if isinstance(x, MNISTBlockWithLabels):
+            return self.net(x.image)
+        return self.net(x)
