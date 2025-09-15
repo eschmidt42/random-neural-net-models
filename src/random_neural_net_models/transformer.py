@@ -9,8 +9,6 @@ references:
     * Q usually from decoder and K / V from encoder
 """
 
-import typing as T
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -32,16 +30,10 @@ class TokensToQKV(nn.Module):
 
     def forward(
         self, X_dec: torch.Tensor, X_enc: torch.Tensor
-    ) -> T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        Q = self.q(
-            X_dec
-        )  # (q0,q_emb_dim) x (q_emb_dim, latent_dim) -> (q0,latent_dim)
-        K = self.k(
-            X_enc
-        )  # (k0,k_emb_dim) x (k_emb_dim, latent_dim) -> (k0,latent_dim)
-        V = self.v(
-            X_enc
-        )  # (v0,v_emb_dim) x (v_emb_dim, latent_dim) -> (v0,latent_dim)
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        Q = self.q(X_dec)  # (q0,q_emb_dim) x (q_emb_dim, latent_dim) -> (q0,latent_dim)
+        K = self.k(X_enc)  # (k0,k_emb_dim) x (k_emb_dim, latent_dim) -> (k0,latent_dim)
+        V = self.v(X_enc)  # (v0,v_emb_dim) x (v_emb_dim, latent_dim) -> (v0,latent_dim)
         return Q, K, V
 
 
@@ -65,7 +57,7 @@ class SplitHeads(nn.Module):
 
     def forward(
         self, Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor
-    ) -> T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         num_part = self.get_num_part(Q)
         Q = self._create_head_dims(Q, num_part)
         K = self._create_head_dims(K, num_part)
@@ -77,15 +69,15 @@ class Causal(nn.Module):
     # https://sebastianraschka.com/blog/2023/self-attention-from-scratch.html
     def __init__(self, n_tokens_q: int, n_tokens_kv: int):
         super().__init__()
-        bias = torch.tril(
-            torch.ones(n_tokens_q, n_tokens_kv, dtype=torch.float)
-        )
+        bias = torch.tril(torch.ones(n_tokens_q, n_tokens_kv, dtype=torch.float))
         bias = rearrange(bias, "h w -> 1 1 h w")
         self.register_buffer("bias", bias)
 
     def forward(
         self, attn: torch.Tensor, Q: torch.Tensor, K: torch.Tensor
     ) -> torch.Tensor:
+        if not isinstance(self.bias, torch.Tensor):
+            raise ValueError(f"Expected {type(self.bias)=} to be of type torch.Tensor")
         # Q, K and V are of shape (B, Nheads, Nin, Npart), where Nin may be different for Q and K/V
         # attn is of the shape (B, Nheads, NinQ, NinK), where NinQ and NinK are the Nin for Q and K each
         _, _, NinQ, _ = Q.shape
@@ -118,9 +110,7 @@ class Attention(nn.Module):
         self.causal = causal
 
         if causal:
-            self.make_causal = Causal(
-                n_tokens_q=n_tokens_q, n_tokens_kv=n_tokens_kv
-            )
+            self.make_causal = Causal(n_tokens_q=n_tokens_q, n_tokens_kv=n_tokens_kv)
         else:
             self.make_causal = NonCausal()
 
@@ -157,7 +147,7 @@ class SkipLayerNorm(nn.Module):
     # for tensors (B, Nin, Nemb) normalize across Nin and Nemb (Nemb = Nheads * Npart)
     def __init__(self, n_tokens: int, emb_dim: int):
         super().__init__()
-        self.layer_norm = nn.LayerNorm((n_tokens, emb_dim))
+        self.layer_norm = nn.LayerNorm([n_tokens, emb_dim])
 
     def forward(self, x_0: torch.Tensor, x_1: torch.Tensor) -> torch.Tensor:
         return self.layer_norm(x_0 + x_1)
@@ -462,7 +452,9 @@ class LanguageModel(nn.Module):
             else:
                 _, idx_next = torch.topk(probs, k=1, dim=-1)
 
-            idx = torch.cat((idx, idx_next), dim=1)
+            idx_next = torch.LongTensor(idx_next)
+
+            idx = torch.LongTensor(torch.cat((idx, idx_next), dim=1))
 
         return idx
 
@@ -488,14 +480,14 @@ class LanguageModelWithTensordict(nn.Module):
         )
 
     def forward(
-        self, input: T.Union[rnnm_text.TokenIDBlockXY, rnnm_text.TokenIDBlockX]
+        self, input: rnnm_text.TokenIDBlockXY | rnnm_text.TokenIDBlockX
     ) -> torch.Tensor:
         return self.language_model(input.x)
 
     @torch.no_grad()
     def generate(
         self,
-        input: T.Union[rnnm_text.TokenIDBlockXY, rnnm_text.TokenIDBlockX],
+        input: rnnm_text.TokenIDBlockXY | rnnm_text.TokenIDBlockX,
         max_new_tokens: int,
         temperature: float = 1.0,
         do_sample: bool = False,
@@ -513,8 +505,8 @@ class CrossEntropyLoss(torch_loss.CrossEntropyLoss):
         super().__init__(*args, **kwargs)
 
     def forward(
-        self, inference: torch.Tensor, input: rnnm_text.TokenIDBlockXY
+        self, input: torch.Tensor, target: rnnm_text.TokenIDBlockXY | torch.Tensor
     ) -> torch.Tensor:
-        return super().forward(
-            inference.view(-1, inference.size(-1)), input.y.view(-1)
-        )
+        if isinstance(target, rnnm_text.TokenIDBlockXY):
+            return super().forward(input.view(-1, input.size(-1)), target.y.view(-1))
+        return super().forward(input.view(-1, input.size(-1)), target.view(-1))
