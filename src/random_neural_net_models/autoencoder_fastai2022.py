@@ -41,15 +41,11 @@ class CNNEncoder(nn.Module):
         padding = ks // 2
         self.add_dim = Rearrange("b h w -> b 1 h w")
         self.add_padding = nn.ZeroPad2d(2)
-        self.enc_conv1 = nn.Conv2d(
-            1, 2, kernel_size=ks, stride=stride, padding=padding
-        )
+        self.enc_conv1 = nn.Conv2d(1, 2, kernel_size=ks, stride=stride, padding=padding)
         nn.init.kaiming_normal_(self.enc_conv1.weight, nonlinearity="relu")
         self.enc_act1 = nn.ReLU()
 
-        self.enc_conv2 = nn.Conv2d(
-            2, 4, kernel_size=ks, stride=stride, padding=padding
-        )
+        self.enc_conv2 = nn.Conv2d(2, 4, kernel_size=ks, stride=stride, padding=padding)
         nn.init.kaiming_normal_(self.enc_conv2.weight, nonlinearity="relu")
         self.enc_act2 = nn.ReLU()
 
@@ -169,8 +165,8 @@ class DenseDecoder(nn.Module):
         n_out: int,
         post_bn: bool = False,
         unflatten_output: bool = False,
-        w: int = None,
-        h: int = None,
+        w: int | None = None,
+        h: int | None = None,
     ):
         super(DenseDecoder, self).__init__()
         self.dec_dense1 = nn.Linear(n_latent, n_hidden1)
@@ -212,7 +208,6 @@ class DenseDecoder(nn.Module):
             self.dec_act2,
             self.dec_bn2,
             self.dec_dense3,
-            # self.dec_act3,
             self.flat2rectangle,
         )
 
@@ -234,5 +229,7 @@ class CNNAutoEncoder(nn.Module):
 
 
 class CNNAutoEncoder2(CNNAutoEncoder):
-    def forward(self, input: rnnm_data.MNISTBlockWithLabels):
-        return super().forward(input.image)
+    def forward(self, x: torch.Tensor | rnnm_data.MNISTBlockWithLabels) -> torch.Tensor:
+        if isinstance(x, rnnm_data.MNISTBlockWithLabels):
+            return super().forward(x.image)
+        return super().forward(x)
