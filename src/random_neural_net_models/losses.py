@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 import torch
 import torch.nn.modules.loss as torch_loss
-import typing as T
-import random_neural_net_models.data as rnnm_data
+
+from random_neural_net_models.data import MNISTBlockWithLabels, XyBlock, XyBlock_numcat
 
 
 class MSELossMNIST1HotLabel(torch_loss.MSELoss):
@@ -10,9 +10,11 @@ class MSELossMNIST1HotLabel(torch_loss.MSELoss):
         super().__init__(*args, **kwargs)
 
     def forward(
-        self, inference: torch.Tensor, input: rnnm_data.MNISTBlockWithLabels
+        self, input: torch.Tensor, target: MNISTBlockWithLabels | torch.Tensor
     ) -> torch.Tensor:
-        return super().forward(inference, input.label)
+        if isinstance(target, MNISTBlockWithLabels):
+            return super().forward(input, target.label)
+        return super().forward(input, target)
 
 
 class MSELossMNISTAutoencoder(torch_loss.MSELoss):
@@ -20,9 +22,11 @@ class MSELossMNISTAutoencoder(torch_loss.MSELoss):
         super().__init__(*args, **kwargs)
 
     def forward(
-        self, inference: torch.Tensor, input: rnnm_data.MNISTBlockWithLabels
+        self, input: torch.Tensor, target: MNISTBlockWithLabels | torch.Tensor
     ) -> torch.Tensor:
-        return super().forward(inference, input.image)
+        if isinstance(target, MNISTBlockWithLabels):
+            return super().forward(input, target.image)
+        return super().forward(input, target)
 
 
 class CrossEntropyMNIST(torch_loss.CrossEntropyLoss):
@@ -30,9 +34,11 @@ class CrossEntropyMNIST(torch_loss.CrossEntropyLoss):
         super().__init__(*args, **kwargs)
 
     def forward(
-        self, inference: torch.Tensor, input: rnnm_data.MNISTBlockWithLabels
+        self, input: torch.Tensor, target: MNISTBlockWithLabels | torch.Tensor
     ) -> torch.Tensor:
-        return super().forward(inference, input.label)
+        if isinstance(target, MNISTBlockWithLabels):
+            return super().forward(input, target.label)
+        return super().forward(input, target)
 
 
 class CrossEntropyXy(torch_loss.CrossEntropyLoss):
@@ -41,10 +47,12 @@ class CrossEntropyXy(torch_loss.CrossEntropyLoss):
 
     def forward(
         self,
-        inference: torch.Tensor,
-        input: T.Union[rnnm_data.XyBlock, rnnm_data.XyBlock_numcat],
+        input: torch.Tensor,
+        target: XyBlock | XyBlock_numcat | torch.Tensor,
     ) -> torch.Tensor:
-        return super().forward(inference, input.y.ravel())
+        if isinstance(target, (XyBlock, XyBlock_numcat)):
+            return super().forward(input, target.y.ravel())
+        return super().forward(input, target.ravel())
 
 
 class MSELossXy(torch_loss.MSELoss):
@@ -53,7 +61,9 @@ class MSELossXy(torch_loss.MSELoss):
 
     def forward(
         self,
-        inference: torch.Tensor,
-        input: T.Union[rnnm_data.XyBlock, rnnm_data.XyBlock_numcat],
+        input: torch.Tensor,
+        target: XyBlock | XyBlock_numcat | torch.Tensor,
     ) -> torch.Tensor:
-        return super().forward(inference, input.y)
+        if isinstance(target, (XyBlock, XyBlock_numcat)):
+            return super().forward(input, target.y)
+        return super().forward(input, target)
