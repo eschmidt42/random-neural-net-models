@@ -35,8 +35,8 @@ class PerceptronClassifier(base.ClassifierMixin, base.BaseEstimator):
         self.verbose = verbose
 
     def _handle_Xy(
-        self, X: np.ndarray, y: np.ndarray = None
-    ) -> T.Tuple[torch.tensor, T.Optional[torch.tensor]]:
+        self, X: np.ndarray, y: np.ndarray | None = None
+    ) -> T.Tuple[torch.Tensor, T.Optional[torch.Tensor]]:
         _X = torch.from_numpy(X).double()  # (N_samples, N_features)
         if y is None:
             return _X, None
@@ -51,6 +51,9 @@ class PerceptronClassifier(base.ClassifierMixin, base.BaseEstimator):
         self.bias_ = torch.zeros(1, dtype=torch.double)  # (1,)
 
         _X, _y = self._handle_Xy(X, y)
+        if _y is None:
+            raise ValueError(f"{_y=} _y cannot be None here")
+
         self.errors_ = torch.zeros(self.epochs, dtype=torch.float32)  # (N_epochs,)
 
         for epoch in tqdm.tqdm(range(self.epochs), disable=not self.verbose):
@@ -79,6 +82,8 @@ class PerceptronClassifier(base.ClassifierMixin, base.BaseEstimator):
         self.bias_ = torch.zeros(1, dtype=torch.double)  # (1,)
 
         _X, _y = self._handle_Xy(X, y)
+        if _y is None:
+            raise ValueError(f"{_y=} _y cannot be None here")
         _y_int = _y.clone().long()
         # we convert the integer labels to one-hot vectors to be able to apply the same math as for the two-class perceptron
         y_onehot = F.one_hot(_y_int, num_classes=self.n_classes_)
@@ -129,18 +134,19 @@ class PerceptronClassifier(base.ClassifierMixin, base.BaseEstimator):
         self.n_classes_ = len(self.classes_)
         self.is_multi_class_ = self.n_classes_ > 2
         self.y_enc_ = preprocessing.LabelEncoder().fit(y)
-        y = self.y_enc_.transform(y)
+        _y = self.y_enc_.transform(y)
+        _y = np.array(_y)
 
         if self.is_multi_class_:
             logger.debug(
                 f"More than two classes detected ({self.classes_}), treating as multi-class problem."
             )
-            self._fit_multi_class(X, y)
+            self._fit_multi_class(X, _y)
         else:
             logger.debug(
                 f"Two classes detected ({self.classes_}), treating as two-class problem."
             )
-            self._fit_two_class(X, y)
+            self._fit_two_class(X, _y)
 
         return self
 
