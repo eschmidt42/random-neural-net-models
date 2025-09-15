@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 import abc
 import string
-import typing as T
 from collections import Counter
+from typing import Iterator
 
 import regex
 import tqdm
@@ -14,12 +14,12 @@ logger = utils.logger
 
 
 class TokenIDs(BaseModel):
-    ids: T.List[StrictInt]
+    ids: tuple[StrictInt, ...]
 
     def model_post_init(self, __context):
         self.ids = tuple(self.ids)
 
-    def __iter__(self) -> T.Iterator[int]:
+    def __iter__(self) -> Iterator[int]:
         return iter(self.ids)
 
     def __getitem__(self, i) -> int:
@@ -29,12 +29,13 @@ class TokenIDs(BaseModel):
         return len(self.ids)
 
     def __add__(self, other: "TokenIDs") -> "TokenIDs":
-        new_values = list(self.ids) + list(other.ids)
+        new_values = tuple(list(self.ids) + list(other.ids))
         return TokenIDs(ids=new_values)
 
 
 def text_to_ids(text: str) -> TokenIDs:
-    return TokenIDs(ids=[int(v) for v in text.encode("utf-8", errors="replace")])
+    vals = tuple([int(v) for v in text.encode("utf-8", errors="replace")])
+    return TokenIDs(ids=vals)
 
 
 def get_stats(token_ids: TokenIDs) -> Counter:
@@ -43,7 +44,7 @@ def get_stats(token_ids: TokenIDs) -> Counter:
 
 def merge_token_ids(
     token_ids: TokenIDs,
-    pair_to_replace: T.Tuple[int, int],
+    pair_to_replace: tuple[int, int],
     replacement_token: int,
 ) -> TokenIDs:
     new_ids = []
@@ -59,7 +60,7 @@ def merge_token_ids(
 
 
 class TokenIDMergeMap(BaseModel):
-    map: T.Dict[T.Tuple[StrictInt, StrictInt], StrictInt]
+    map: dict[tuple[StrictInt, StrictInt], StrictInt]
 
     @field_validator("map")
     @classmethod
@@ -71,7 +72,7 @@ class TokenIDMergeMap(BaseModel):
             raise ValueError(msg)
         return v
 
-    def __getitem__(self, pair: T.Tuple[int, int]) -> int:
+    def __getitem__(self, pair: tuple[int, int]) -> int:
         return self.map[pair]
 
     def __len__(self) -> int:
@@ -85,9 +86,9 @@ def repeated_merge(
     token_ids: TokenIDs,
     vocab_size: int,
     show_progress: bool,
-    base_tokens: TokenIDs = None,
+    base_tokens: TokenIDs | None = None,
     return_new_ids: bool = False,
-) -> T.Union[T.Tuple[TokenIDMergeMap, TokenIDs], TokenIDMergeMap]:
+) -> tuple[TokenIDMergeMap, TokenIDs] | TokenIDMergeMap:
     n0 = len(token_ids)
     n_used_tokens = len(set(token_ids))
     n_merges = vocab_size - n_used_tokens
@@ -120,7 +121,7 @@ def encode(
     text: str,
     pair_map: TokenIDMergeMap,
 ) -> TokenIDs:
-    token_ids = TokenIDs(ids=[int(v) for v in text.encode("utf-8")])
+    token_ids = TokenIDs(ids=tuple([int(v) for v in text.encode("utf-8")]))
     logger.debug(f"{len(token_ids)=:_d} raw tokens")
     if len(token_ids) == 1:
         logger.debug("Found only one token, returning.")
@@ -148,7 +149,7 @@ FALLBACK_TOKEN_BYTES = FALLBACK_TOKEN.encode(encoding="utf-8")
 
 def decode(
     token_ids: TokenIDs,
-    vocab: T.Dict[int, bytes],
+    vocab: dict[int, bytes],
     fallback: bytes = FALLBACK_TOKEN_BYTES,
 ) -> str:
     tokens = [vocab.get(token, fallback) for token in token_ids]
@@ -163,11 +164,11 @@ BASE_SYMBOLS = string.ascii_letters + string.digits + string.punctuation
 class TokenizerBase(abc.ABC):
     base_symbols: str
     base_token_ids: TokenIDs
-    vocab: T.Dict[int, bytes]
+    vocab: dict[int, bytes]
     pair_map: TokenIDMergeMap
     special_token2id_map: dict[str, int]
 
-    def __init__(self, base_symbols: str = None):
+    def __init__(self, base_symbols: str | None = None):
         self.base_symbols = base_symbols if base_symbols else BASE_SYMBOLS
         self.base_token_ids = text_to_ids(self.base_symbols)
 
@@ -198,8 +199,8 @@ class TokenizerSimple(TokenizerBase):
     def encode(self, text: str) -> TokenIDs:
         return encode(text, self.pair_map)
 
-    def decode(self, token_ids: TokenIDs) -> str:
-        return "".join(decode(token_ids, self.vocab))
+    def decode(self, tokens: TokenIDs) -> str:
+        return "".join(decode(tokens, self.vocab))
 
 
 GPT4_SPLIT_PATTERN = regex.compile(
@@ -218,7 +219,7 @@ class TokenizerRegex(TokenizerSimple):
     ):
         self.pattern = pattern
 
-        token_ids: T.List[TokenIDs] = [
+        token_ids: list[TokenIDs] = [
             text_to_ids(chunk) for chunk in self.pattern.findall(text)
         ]
         unique_tokens = set(tok for chunk in token_ids for tok in chunk)
@@ -259,7 +260,7 @@ class TokenizerRegex(TokenizerSimple):
 
     def register_special_tokens(
         self,
-        special_token2id_map: T.Dict[str, int],
+        special_token2id_map: dict[str, int],
     ):
         self.special_token2id_map = special_token2id_map
         self.inv_special_token2id_map = {v: k for k, v in special_token2id_map.items()}
@@ -269,7 +270,7 @@ class TokenizerRegex(TokenizerSimple):
         self.use_special_tokens = True
 
     def _ordinary_encode(self, text: str) -> TokenIDs:
-        ids = TokenIDs(ids=[])
+        ids = TokenIDs(ids=())
         for chunk in self.pattern.findall(text):
             ids += encode(chunk, self.pair_map)
         return ids
@@ -279,22 +280,22 @@ class TokenizerRegex(TokenizerSimple):
             return self._ordinary_encode(text)
         else:
             chunks = regex.split(self.special_pattern, text)
-            ids = TokenIDs(ids=[])
+            ids = TokenIDs(ids=())
             for chunk in chunks:
                 if chunk in self.special_token2id_map:
-                    ids += TokenIDs(ids=[self.special_token2id_map[chunk]])
+                    ids += TokenIDs(ids=tuple([self.special_token2id_map[chunk]]))
                 else:
                     ids += self._ordinary_encode(chunk)
             return ids
 
-    def decode(self, token_ids: TokenIDs) -> str:
+    def decode(self, tokens: TokenIDs) -> str:
         if not self.use_special_tokens:
-            return "".join(decode(token_ids, self.vocab))
+            return "".join(decode(tokens, self.vocab))
         else:
             text = []
-            for _id in token_ids:
+            for _id in tokens:
                 if _id in self.inv_special_token2id_map:
                     text.append(self.inv_special_token2id_map[_id])
                 else:
-                    text.extend(decode(TokenIDs(ids=[_id]), self.vocab))
+                    text.extend(decode(TokenIDs(ids=tuple([_id])), self.vocab))
             return "".join(text)
