@@ -13,12 +13,13 @@ logger = utils.get_logger("mingpt.utils")
 @dataclass(frozen=True)
 class ModelConfig:
     "Configuration for gpt model"
+
     model_type: str = "gpt"
-    n_layer: int = None
-    n_head: int = None
-    n_embd: int = None
-    vocab_size: int = None
-    block_size: int = None
+    n_layer: int | None = None
+    n_head: int | None = None
+    n_embd: int | None = None
+    vocab_size: int | None = None
+    block_size: int | None = None
     embd_pdrop: float = 0.1
     resid_pdrop: float = 0.1
     attn_pdrop: float = 0.1
@@ -27,9 +28,10 @@ class ModelConfig:
 @dataclass(frozen=True)
 class TrainerConfig:
     "Configuration for gpt trainer"
+
     device: str = "auto"
     num_workers: int = 4
-    max_iters: int = None
+    max_iters: int | None = None
     batch_size: int = 64
     learning_rate: float = 3e-4
     betas: T.Tuple[float, float] = (0.9, 0.95)
@@ -50,10 +52,7 @@ def get_modified_config_dict(
             logger.info(f"adding: {msg}")
         if len(updated_keys) > 0:
             msg = ", ".join(
-                [
-                    f"{k}: {config.__getattribute__(k)} -> {kwargs[k]}"
-                    for k in new_keys
-                ]
+                [f"{k}: {config.__getattribute__(k)} -> {kwargs[k]}" for k in new_keys]
             )
             logger.info(f"updating: {msg}")
 
