@@ -10,12 +10,10 @@ https://github.com/huggingface/transformers/blob/main/src/transformers/models/gp
 """
 
 import math
-import typing as T
 
 import torch
 import torch.nn as nn
 from einops import einsum, rearrange
-from einops.layers.torch import Rearrange
 from torch.nn import functional as F
 
 import random_neural_net_models.mingpt.configs as configs
@@ -59,6 +57,11 @@ class CausalSelfAttention(nn.Module):
 
     def __init__(self, config: configs.ModelConfig):
         super().__init__()
+
+        if config.n_embd is None or config.n_head is None:
+            raise ValueError(
+                f"{config.n_embd=} and {config.n_head=} cannot be None here"
+            )
         assert config.n_embd % config.n_head == 0
 
         # key, query, value projections for all heads, but in a batch
@@ -72,16 +75,17 @@ class CausalSelfAttention(nn.Module):
         self.resid_dropout = nn.Dropout(config.resid_pdrop)
 
         # causal mask to ensure that attention is only applied to the left in the input sequence
+        if config.block_size is None:
+            raise ValueError(f"{config.block_size=} cannot be None here")
+
         bias = torch.tril(torch.ones(config.block_size, config.block_size))
         bias = rearrange(bias, "h w -> 1 1 h w")
-        self.register_buffer("bias", bias)
+        self.register_buffer("bias", bias, persistent=False)
 
         self.n_head = config.n_head
         self.n_embd = config.n_embd
 
-    def _move_head_forward(
-        self, x: torch.Tensor, emb_dims: int
-    ) -> torch.Tensor:
+    def _move_head_forward(self, x: torch.Tensor, emb_dims: int) -> torch.Tensor:
         return rearrange(
             x,
             "B S (Nh Ne) -> B Nh S Ne",
@@ -102,9 +106,10 @@ class CausalSelfAttention(nn.Module):
         # causal self-attention; Self-attend: (B, nh, S, hs) x (B, nh, hs, S) -> (B, nh, S, S)
         f = 1.0 / math.sqrt(k.size(-1))
         kT = rearrange(k, "B Nh S Ne -> B Nh Ne S")
-        att = f * einsum(
-            q, kT, "B Nh Sq Ne, B Nh Ne Sk -> B Nh Sq Sk"
-        )  # q @ kT * f
+        att = f * einsum(q, kT, "B Nh Sq Ne, B Nh Ne Sk -> B Nh Sq Sk")  # q @ kT * f
+
+        if not isinstance(self.bias, torch.Tensor):
+            raise ValueError(f"{type(self.bias)=} but exepcted torch.Tensor")
 
         mask = self.bias[:, :, :S, :S] == 0
         att = att.masked_fill(mask, float("-inf"))  # causal part
@@ -126,6 +131,10 @@ class Block(nn.Module):
 
     def __init__(self, config: configs.ModelConfig):
         super().__init__()
+
+        if config.n_embd is None:
+            raise ValueError(f"{config.n_embd=} cannot be None here.")
+
         self.attn = nn.Sequential(
             nn.LayerNorm(config.n_embd),
             CausalSelfAttention(config),
@@ -147,12 +156,20 @@ class Block(nn.Module):
 class Transformer(nn.Module):
     def __init__(self, config: configs.ModelConfig):
         super().__init__()
+
+        if config.vocab_size is None:
+            raise ValueError(f"{config.vocab_size=} cannot be None here.")
+        if config.block_size is None:
+            raise ValueError(f"{config.block_size=} cannot be None here.")
+        if config.n_embd is None:
+            raise ValueError(f"{config.n_embd=} cannot be None here.")
+        if config.n_layer is None:
+            raise ValueError(f"{config.n_layer=} cannot be None here.")
+
         self.wte = nn.Embedding(config.vocab_size, config.n_embd)
         self.wpe = nn.Embedding(config.block_size, config.n_embd)
         self.drop = nn.Dropout(config.embd_pdrop)
-        self.blocks = nn.ModuleList(
-            [Block(config) for _ in range(config.n_layer)]
-        )
+        self.blocks = nn.ModuleList([Block(config) for _ in range(config.n_layer)])
         self.ln_f = nn.LayerNorm(config.n_embd)
 
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
@@ -221,9 +238,8 @@ class GPT(nn.Module):
         assert type_given ^ params_given  # exactly one of these (XOR)
         if type_given:
             # translate from model_type to detailed configuration
-            config = configs.get_modified_model_config(
-                config, **MODEL_CONFIGS[config.model_type]
-            )
+            _config = MODEL_CONFIGS[config.model_type]
+            config = configs.get_modified_model_config(config, verbose=False, **_config)
         return config
 
     def __init__(self, config: configs.ModelConfig):
@@ -231,8 +247,14 @@ class GPT(nn.Module):
 
         config = self.handle_config(config)
 
+        if config.block_size is None:
+            raise ValueError(f"{config.block_size=} cannot be None here.")
+
         self.block_size = config.block_size
         self.transformer = Transformer(config)
+
+        if config.n_layer is None:
+            raise ValueError(f"{config.n_layer=} cannot be None here.")
 
         self._init_weights(config.n_layer)
 
@@ -245,9 +267,7 @@ class GPT(nn.Module):
         self.apply(init_weights_given_module_type)
         for pn, p in self.named_parameters():
             if pn.endswith("c_proj.weight"):
-                torch.nn.init.normal_(
-                    p, mean=0.0, std=0.02 / math.sqrt(2 * n_layer)
-                )
+                torch.nn.init.normal_(p, mean=0.0, std=0.02 / math.sqrt(2 * n_layer))
 
     def configure_optimizers(
         self, train_config: configs.TrainerConfig
@@ -273,14 +293,10 @@ class GPT(nn.Module):
                 if pn.endswith("bias"):
                     # all biases will not be decayed
                     no_decay.add(fpn)
-                elif pn.endswith("weight") and isinstance(
-                    m, whitelist_weight_modules
-                ):
+                elif pn.endswith("weight") and isinstance(m, whitelist_weight_modules):
                     # weights of whitelist modules will be weight decayed
                     decay.add(fpn)
-                elif pn.endswith("weight") and isinstance(
-                    m, blacklist_weight_modules
-                ):
+                elif pn.endswith("weight") and isinstance(m, blacklist_weight_modules):
                     # weights of blacklist modules will NOT be weight decayed
                     no_decay.add(fpn)
 
@@ -288,10 +304,9 @@ class GPT(nn.Module):
         param_dict = {pn: p for pn, p in self.named_parameters()}
         inter_params = decay & no_decay
         union_params = decay | no_decay
-        assert (
-            len(inter_params) == 0
-        ), "parameters %s made it into both decay/no_decay sets!" % (
-            str(inter_params),
+        assert len(inter_params) == 0, (
+            "parameters %s made it into both decay/no_decay sets!"
+            % (str(inter_params),)
         )
         assert len(param_dict.keys() - union_params) == 0, (
             "parameters %s were not separated into either decay/no_decay set!"
@@ -317,15 +332,15 @@ class GPT(nn.Module):
         return optimizer
 
     def forward(
-        self, idx: torch.Tensor, targets: torch.Tensor = None
-    ) -> T.Tuple[torch.Tensor, torch.Tensor]:
+        self, idx: torch.Tensor, targets: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
         device = idx.device
 
         _, t = idx.size()
 
-        assert (
-            t <= self.block_size
-        ), f"Cannot forward sequence of length {t}, block size is only {self.block_size}"
+        assert t <= self.block_size, (
+            f"Cannot forward sequence of length {t}, block size is only {self.block_size}"
+        )
 
         pos = torch.arange(0, t, dtype=torch.long, device=device).unsqueeze(
             0
@@ -361,9 +376,7 @@ class GPT(nn.Module):
         for _ in range(max_new_tokens):
             # if the sequence context is growing too long we must crop it at block_size
             idx_cond = (
-                idx
-                if idx.size(1) <= self.block_size
-                else idx[:, -self.block_size :]
+                idx if idx.size(1) <= self.block_size else idx[:, -self.block_size :]
             )
 
             # forward the model to get the logits for the index in the sequence
