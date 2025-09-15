@@ -34,9 +34,7 @@ class TokenIDs(BaseModel):
 
 
 def text_to_ids(text: str) -> TokenIDs:
-    return TokenIDs(
-        ids=[int(v) for v in text.encode("utf-8", errors="replace")]
-    )
+    return TokenIDs(ids=[int(v) for v in text.encode("utf-8", errors="replace")])
 
 
 def get_stats(token_ids: TokenIDs) -> Counter:
@@ -51,10 +49,7 @@ def merge_token_ids(
     new_ids = []
     i = 0
     while i < len(token_ids):
-        if (
-            i < len(token_ids) - 1
-            and tuple(token_ids[i : i + 2]) == pair_to_replace
-        ):
+        if i < len(token_ids) - 1 and tuple(token_ids[i : i + 2]) == pair_to_replace:
             new_ids.append(replacement_token)
             i += 2
         else:
@@ -93,7 +88,6 @@ def repeated_merge(
     base_tokens: TokenIDs = None,
     return_new_ids: bool = False,
 ) -> T.Union[T.Tuple[TokenIDMergeMap, TokenIDs], TokenIDMergeMap]:
-
     n0 = len(token_ids)
     n_used_tokens = len(set(token_ids))
     n_merges = vocab_size - n_used_tokens
@@ -101,9 +95,7 @@ def repeated_merge(
         f"repeatedly merging tokens: {n_merges=} to achieve {vocab_size=} with {n_used_tokens=}"
     )
 
-    replacement_token = (
-        max(token_ids + base_tokens) if base_tokens else max(token_ids)
-    )
+    replacement_token = max(token_ids + base_tokens) if base_tokens else max(token_ids)
     pair_map = {}
     for _ in tqdm.tqdm(
         range(n_merges), total=n_merges, desc="merge", disable=not show_progress
@@ -111,13 +103,11 @@ def repeated_merge(
         stats = get_stats(token_ids)
         pair_to_replace = stats.most_common()[0][0]
         replacement_token += 1
-        token_ids = merge_token_ids(
-            token_ids, pair_to_replace, replacement_token
-        )
+        token_ids = merge_token_ids(token_ids, pair_to_replace, replacement_token)
         pair_map[pair_to_replace] = replacement_token
     n1 = len(token_ids)
     logger.info(
-        f"result: {n0:_d} -> {n1:_d} tokens = compression to {n1/n0:.2%} of tokens"
+        f"result: {n0:_d} -> {n1:_d} tokens = compression to {n1 / n0:.2%} of tokens"
     )
 
     pair_map = TokenIDMergeMap(map=pair_map)
@@ -171,11 +161,11 @@ BASE_SYMBOLS = string.ascii_letters + string.digits + string.punctuation
 
 
 class TokenizerBase(abc.ABC):
-
     base_symbols: str
     base_token_ids: TokenIDs
     vocab: T.Dict[int, bytes]
     pair_map: TokenIDMergeMap
+    special_token2id_map: dict[str, int]
 
     def __init__(self, base_symbols: str = None):
         self.base_symbols = base_symbols if base_symbols else BASE_SYMBOLS
@@ -192,7 +182,6 @@ class TokenizerBase(abc.ABC):
 
 
 class TokenizerSimple(TokenizerBase):
-
     def fit(self, text: str, vocab_size: int, verbose: int = False):
         token_ids = text_to_ids(text)
         self.pair_map = repeated_merge(
@@ -202,9 +191,7 @@ class TokenizerSimple(TokenizerBase):
             base_tokens=self.base_token_ids,
             return_new_ids=False,
         )
-        self.vocab = {
-            idx: bytes([idx]) for idx in set(token_ids + self.base_token_ids)
-        }
+        self.vocab = {idx: bytes([idx]) for idx in set(token_ids + self.base_token_ids)}
         for (token0, token1), idx in self.pair_map.items():
             self.vocab[idx] = self.vocab[token0] + self.vocab[token1]
 
@@ -221,7 +208,6 @@ GPT4_SPLIT_PATTERN = regex.compile(
 
 
 class TokenizerRegex(TokenizerSimple):
-
     use_special_tokens: bool = False
 
     def fit(
@@ -251,7 +237,6 @@ class TokenizerRegex(TokenizerSimple):
         replacement_token = max(unique_tokens)
 
         for _ in range(n_merges):
-
             stats = Counter()
             for chunk in token_ids:
                 stats.update(get_stats(chunk))
@@ -277,9 +262,7 @@ class TokenizerRegex(TokenizerSimple):
         special_token2id_map: T.Dict[str, int],
     ):
         self.special_token2id_map = special_token2id_map
-        self.inv_special_token2id_map = {
-            v: k for k, v in special_token2id_map.items()
-        }
+        self.inv_special_token2id_map = {v: k for k, v in special_token2id_map.items()}
         self.special_pattern = (
             "(" + "|".join(regex.escape(k) for k in special_token2id_map) + ")"
         )
@@ -305,7 +288,6 @@ class TokenizerRegex(TokenizerSimple):
             return ids
 
     def decode(self, token_ids: TokenIDs) -> str:
-
         if not self.use_special_tokens:
             return "".join(decode(token_ids, self.vocab))
         else:
