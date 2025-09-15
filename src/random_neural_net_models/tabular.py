@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import typing as T
+
 from enum import Enum
 from functools import partial
 
@@ -44,7 +44,7 @@ class BiasSources(Enum):
 
 
 class ImputeMissingness(nn.Module):
-    def __init__(self, cols_with_missing: T.Tuple[int], bias_source: BiasSources):
+    def __init__(self, cols_with_missing: tuple[int, ...], bias_source: BiasSources):
         super().__init__()
 
         if len(cols_with_missing) > len(set(cols_with_missing)):
@@ -65,6 +65,10 @@ class ImputeMissingness(nn.Module):
         self.register_buffer("cols_with_missing", torch.tensor(cols_with_missing))
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
+        if not isinstance(self.cols_with_missing, torch.Tensor):
+            raise ValueError(
+                f"Expected {type(self.cols_with_missing)=} to be of type torch.Tensor"
+            )
         X_sub = X[:, self.cols_with_missing].clone()
         is_finite = torch.isfinite(X_sub)
 
@@ -87,7 +91,7 @@ class TabularModel(nn.Module):
         use_batch_norm: bool,
         do_impute: bool = False,
         impute_bias_source: BiasSources = BiasSources.zero,
-        cols_with_missing: tuple[int] | None = None,
+        cols_with_missing: tuple[int, ...] | None = None,
     ) -> None:
         super().__init__()
 
@@ -102,9 +106,11 @@ class TabularModel(nn.Module):
                     bias_source=impute_bias_source,
                 )
             )
-            n_hidden[0] = n_hidden[0] + len(
+            _n_hidden = list(n_hidden)
+            _n_hidden[0] = n_hidden[0] + len(
                 (cols_with_missing)
             )  # because ImputeMissingness horizontally stacks boolean missingness flags
+            n_hidden = tuple(_n_hidden)
 
         self.n_hidden = n_hidden
         for i, (n_in, n_out) in enumerate(zip(n_hidden[:-1], n_hidden[1:])):
@@ -129,17 +135,17 @@ class TabularModelClassification(nn.Module):
     def __init__(
         self,
         n_features: int,
-        n_hidden: T.List[int],
+        n_hidden: list[int],
         n_classes: int,
         use_batch_norm: bool,
         do_impute: bool = False,
-        n_categories_per_column: T.List[int] = None,
+        n_categories_per_column: tuple[int, ...] | None = None,
         impute_bias_source: BiasSources = BiasSources.zero,
-        cols_with_missing: T.Tuple[int] = None,
+        cols_with_missing: tuple[int, ...] | None = None,
     ) -> None:
         super().__init__()
 
-        n_acts = [n_features] + n_hidden + [n_classes]
+        n_acts = tuple([n_features] + n_hidden + [n_classes])
         if n_categories_per_column is None:
             self.net = TabularModel(
                 n_hidden=n_acts,
@@ -177,19 +183,19 @@ class TabularModelRegression(nn.Module):
     def __init__(
         self,
         n_features: int,
-        n_hidden: T.List[int],
+        n_hidden: tuple[int, ...],
         mean: float,
         std: float,
         use_batch_norm: bool,
         do_impute: bool = False,
-        n_categories_per_column: T.List[int] = None,
+        n_categories_per_column: tuple[int, ...] | None = None,
         impute_bias_source: BiasSources = BiasSources.zero,
-        cols_with_missing: T.Tuple[int] = None,
+        cols_with_missing: tuple[int, ...] | None = None,
     ) -> None:
         super().__init__()
 
-        n_acts = (
-            [n_features] + n_hidden + [1]
+        n_acts = tuple(
+            [n_features] + list(n_hidden) + [1]
         )  # hard-coded that only one target is predicted
 
         if n_categories_per_column is None:
@@ -220,10 +226,10 @@ class TabularModelRegression(nn.Module):
 
 def make_missing(
     X: np.ndarray,
-    value: T.Union[float, int],
+    value: float | int,
     p_missing: float = 0.1,
-    cols_with_missing: T.Tuple[int] = None,
-) -> T.Tuple[np.ndarray, np.ndarray]:
+    cols_with_missing: tuple[int, ...] | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
     if cols_with_missing is not None and len(cols_with_missing) > len(
         set(cols_with_missing)
     ):
@@ -254,12 +260,12 @@ def calc_categorical_feature_embedding_dimension(n_cat: int) -> int:
 class TabularModelNumericalAndCategorical(nn.Module):
     def __init__(
         self,
-        n_hidden: T.Tuple[int],
-        n_categories_per_column: T.Tuple[int],
+        n_hidden: tuple[int, ...],
+        n_categories_per_column: tuple[int, ...],
         use_batch_norm: bool,
         do_impute: bool = False,
         impute_bias_source: BiasSources = BiasSources.zero,
-        cols_with_missing_num: T.Tuple[int] = None,
+        cols_with_missing_num: tuple[int, ...] | None = None,
     ) -> None:
         super().__init__()
 
@@ -267,6 +273,9 @@ class TabularModelNumericalAndCategorical(nn.Module):
         self.do_impute = do_impute
 
         if do_impute:
+            if cols_with_missing_num is None:
+                raise ValueError(f"cols_with_missing_num cannot be None here")
+
             self.impute = ImputeMissingness(
                 cols_with_missing=cols_with_missing_num,
                 bias_source=impute_bias_source,
@@ -310,7 +319,9 @@ class TabularModelNumericalAndCategorical(nn.Module):
 
         n_emb_in = sum(self.emb_dims)
 
-        n_hidden[0] = n_num_in + n_emb_in
+        _n_hidden = list(n_hidden)
+        _n_hidden[0] = n_num_in + n_emb_in
+        n_hidden = tuple(_n_hidden)
         self.n_num_in = n_num_in
         self.n_emb_in = n_emb_in
         self.n_hidden = n_hidden
@@ -345,7 +356,7 @@ class TabularModelNumericalAndCategorical(nn.Module):
 
 def make_string_series_to_int(
     s: pd.Series,
-) -> T.Tuple[pd.Series, T.Dict[str, int]]:
+) -> tuple[pd.Series, dict[str, int]]:
     map_cols_str2int = {val: i for i, val in enumerate(sorted(s.unique()))}
     s_int = s.copy(deep=True)
     s_int = s_int.map(map_cols_str2int)
@@ -353,8 +364,8 @@ def make_string_series_to_int(
 
 
 def make_string_columns_to_int(
-    df: pd.DataFrame, categorical_columns: T.Iterable[str]
-) -> T.Tuple[pd.DataFrame, T.Dict[str, T.Dict[str, int]]]:
+    df: pd.DataFrame, categorical_columns: list[str]
+) -> tuple[pd.DataFrame, dict[str, dict[str, int]]]:
     df_int = df.copy(deep=True)
     maps_str2int = {}
     for col in categorical_columns:
