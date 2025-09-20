@@ -36,6 +36,6 @@ jobs:
           for nb in "${notebooks[@]}"; do
             echo "----- Executing: $nb"
             # Run through uv to ensure the same CLI environment used locally (uv should be installed by make target)
-            uv run jupyter nbconvert --to notebook --execute "$nb" --output "$nb" --ExecutePreprocessor.timeout=600
+            uv run jupyter execute "$nb" --timeout=600
             echo "----- Finished: $nb"
           done
