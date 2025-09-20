@@ -1,0 +1,43 @@
+name: Run Jupyter notebooks on PR
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  run-notebooks:
+    name: Execute notebooks in nbs/core
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies (make install-dev-env)
+        run: |
+          set -euo pipefail
+          # Use the repo's Makefile target to create the development environment.
+          # This target is expected to install required packages and tooling including uv, jupyter, nbconvert.
+          make install-dev-env
+
+      - name: Execute notebooks in nbs/core using uv
+        # Fail the job if any notebook execution returns a non-zero exit code
+        run: |
+          set -euo pipefail
+          echo "Looking for notebooks under nbs/core..."
+          mapfile -t notebooks < <(git ls-files 'nbs/core/*.ipynb' || true)
+          if [ ${#notebooks[@]} -eq 0 ]; then
+            echo "No notebooks found in nbs/core; nothing to run."
+            exit 0
+          fi
+          for nb in "${notebooks[@]}"; do
+            echo "----- Executing: $nb"
+            # Run through uv to ensure the same CLI environment used locally (uv should be installed by make target)
+            uv run jupyter nbconvert --to notebook --execute "$nb" --output "$nb" --ExecutePreprocessor.timeout=600
+            echo "----- Finished: $nb"
+          done
