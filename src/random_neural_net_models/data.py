@@ -94,7 +94,7 @@ class NumpyNumCatTrainingDataset(Dataset):
                     for i, v in enumerate(x_cat)
                 ]
             ],
-            dtype=np.integer,
+            dtype=np.int64,
         )
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -152,7 +152,7 @@ class NumpyNumCatTrainingDatasetXOnly(Dataset):
                     for i, v in enumerate(x_cat)
                 ]
             ],
-            dtype=np.integer,
+            dtype=np.int64,
         )
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:

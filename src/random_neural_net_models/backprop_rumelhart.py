@@ -75,10 +75,10 @@ class Rumelhart1986PerceptronClassifier(base.BaseEstimator, base.ClassifierMixin
         # iterating through the layers in reverse order
         # from the output layer to the input layer
         ix_layers = list(range(len(self.weights_)))[::-1]
-        gradients: list[torch.Tensor] = []
+        gradients: list[torch.Tensor] = [torch.Tensor() for _ in range(len(ix_layers))]
         old_gradients = None
         if self.alpha > 0 and "gradients" in self.telemetry_:
-            old_gradients = self.telemetry_["gradients"]
+            old_gradients = list(self.telemetry_["gradients"])
 
         for i in ix_layers:
             z = self.telemetry_["z"][i]
@@ -88,7 +88,7 @@ class Rumelhart1986PerceptronClassifier(base.BaseEstimator, base.ClassifierMixin
 
             # part to be added to the weight for layer i
             dw = a.T @ delta
-            gradients.append(dw)
+            gradients[i] = dw
 
             w = self.weights_[i]
             delta = delta @ w.T
