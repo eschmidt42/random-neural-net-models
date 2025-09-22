@@ -12,7 +12,6 @@ from torch.utils.data import DataLoader
 import random_neural_net_models.utils as utils
 from random_neural_net_models.learner.callbacks import (
     CancelFitException,
-    LRFinderCallback,
 )
 from random_neural_net_models.learner.interfaces import Callback, CallbackEnum, Events
 
@@ -215,7 +214,7 @@ class Learner:
         self,
         dataloader: DataLoader,
         n_epochs: int,
-        lr_find_callback: "LRFinderCallback",
+        lr_find_callback: Callback,
     ):
         self.fit(
             dataloader_train=dataloader,

@@ -6,10 +6,13 @@ from random_neural_net_models.learner.callbacks import (
     EarlyStoppingCallback,
     EveryBatchSchedulerCallback,
     LRFinderCallback,
+    TelemetryArgs,
     TrainActivationsCallback,
     TrainGradientsCallback,
     TrainLossCallback,
     TrainParametersCallback,
+    get_default_train_callbacks,
+    plot,
 )
 from random_neural_net_models.learner.core import Learner, logger
 from random_neural_net_models.learner.interfaces import Events
@@ -23,8 +26,11 @@ __all__ = [
     "TrainParametersCallback",
     "TrainActivationsCallback",
     "EveryBatchSchedulerCallback",
+    "TelemetryArgs",
+    "get_default_train_callbacks",
     "Events",
     "logger",
+    "plot",
 ]
 
 

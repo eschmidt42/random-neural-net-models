@@ -7,6 +7,7 @@ import seaborn as sns
 import torch
 import torch.optim as optim
 from pydantic.dataclasses import dataclass
+from torch.optim.lr_scheduler import LRScheduler
 
 import random_neural_net_models.telemetry as rnnm_telemetry
 from random_neural_net_models.learner.interfaces import (
@@ -125,13 +126,13 @@ class TrainActivationsCallback(Callback):
     enum = CallbackEnum.train_activations
     activations_history: rnnm_telemetry.ActivationsHistory
     every_n: int
-    name_patterns: tuple[str] | None
+    name_patterns: tuple[str, ...] | None
     max_depth_search: int
 
     def __init__(
         self,
         every_n: int = 1,
-        name_patterns: tuple[str] | None = None,
+        name_patterns: tuple[str, ...] | None = None,
         max_depth_search: int = 1,
     ):
         self.every_n = every_n
@@ -193,13 +194,13 @@ class TrainGradientsCallback(Callback):
     enum = CallbackEnum.train_gradients
     gradients_history: rnnm_telemetry.GradientsHistory
     every_n: int
-    name_patterns: tuple[str] | None
+    name_patterns: tuple[str, ...] | None
     max_depth_search: int
 
     def __init__(
         self,
         every_n: int = 1,
-        name_patterns: tuple[str] | None = None,
+        name_patterns: tuple[str, ...] | None = None,
         max_depth_search: int = 1,
     ):
         self.every_n = every_n
@@ -264,13 +265,13 @@ class TrainParametersCallback(Callback):
     enum = CallbackEnum.train_parameters
     parameters_history: rnnm_telemetry.ParametersHistory
     every_n: int
-    name_patterns: tuple[str] | None
+    name_patterns: tuple[str, ...] | None
     max_depth_search: int
 
     def __init__(
         self,
         every_n: int = 1,
-        name_patterns: tuple[str] | None = None,
+        name_patterns: tuple[str, ...] | None = None,
         max_depth_search: int = 1,
     ):
         self.every_n = every_n
@@ -490,3 +491,66 @@ class EarlyStoppingCallback(Callback):
         else:
             self.best_loss = learner.loss_valid
             self.n_epochs_worse = 0
+
+
+@dataclass(frozen=True)
+class TelemetryArgs:
+    every_n: int
+    max_depth_search: int
+    name_patterns: tuple[str, ...]
+
+
+def get_default_train_callbacks(
+    activation_callback_args: TelemetryArgs = TelemetryArgs(10, 4, (".*act",)),
+    use_activation_callback: bool = True,
+    gradient_callback_args: TelemetryArgs = TelemetryArgs(10, 4, (".*lin",)),
+    use_gradient_callback: bool = True,
+    parameter_callback_args: TelemetryArgs = TelemetryArgs(10, 4, (".*lin",)),
+    use_parameter_callback: bool = True,
+    scheduler: LRScheduler | None = None,
+) -> list[Callback]:
+    callbacks: list[Callback] = [TrainLossCallback()]
+
+    if use_activation_callback:
+        activations_callback = TrainActivationsCallback(
+            every_n=activation_callback_args.every_n,
+            max_depth_search=activation_callback_args.max_depth_search,
+            name_patterns=activation_callback_args.name_patterns,
+        )
+        callbacks.append(activations_callback)
+
+    if use_gradient_callback:
+        gradients_callback = TrainGradientsCallback(
+            every_n=gradient_callback_args.every_n,
+            max_depth_search=gradient_callback_args.max_depth_search,
+            name_patterns=gradient_callback_args.name_patterns,
+        )
+        callbacks.append(gradients_callback)
+
+    if use_parameter_callback:
+        parameters_callback = TrainParametersCallback(
+            every_n=parameter_callback_args.every_n,
+            max_depth_search=parameter_callback_args.max_depth_search,
+            name_patterns=parameter_callback_args.name_patterns,
+        )
+        callbacks.append(parameters_callback)
+
+    if scheduler:
+        scheduler_callback = EveryBatchSchedulerCallback(scheduler)
+        callbacks.append(scheduler_callback)
+
+    return callbacks
+
+
+def plot(callbacks: list[Callback]):
+    for cb in callbacks:
+        match cb:
+            case (
+                TrainLossCallback()
+                | TrainParametersCallback()
+                | TrainGradientsCallback()
+                | TrainActivationsCallback()
+            ):
+                cb.plot()
+            case _:
+                pass
