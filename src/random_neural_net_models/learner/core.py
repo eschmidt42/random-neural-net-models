@@ -186,7 +186,7 @@ class Learner:
         callbacks: list[Callback] | None = None,
     ):
         use_callbacks = callbacks is not None
-        registered_callbacks = None
+        registered_callbacks = {}
         if use_callbacks:
             logger.info(f"replacing {self.registered_callbacks=} with {callbacks=}")
             registered_callbacks = self.registered_callbacks
