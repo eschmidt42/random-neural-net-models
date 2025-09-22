@@ -1,4 +1,4 @@
-SHELL = /bin/bash
+# SHELL = /bin/bash
 
 .PHONY: help
 help:
@@ -30,6 +30,14 @@ update-dev-env:
 .PHONY: install-ci-env
 install-ci-env:
 	uv sync --all-extras --group tests
+
+
+# ------------------------------------------------------------------------------
+# notebooks
+# ------------------------------------------------------------------------------
+.PHONY: run-notebooks-core
+run-notebooks-core:
+	sh scripts/run-notebooks-core.sh
 
 # ==============================================================================
 # test
