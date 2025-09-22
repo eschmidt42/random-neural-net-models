@@ -19,7 +19,7 @@ from torch.utils.data import DataLoader
 
 import random_neural_net_models.telemetry as rnnm_telemetry
 import random_neural_net_models.utils as utils
-from random_neural_net_models.interfaces import Callback, CallbackEnum, Events
+from random_neural_net_models.learner.interfaces import Callback, CallbackEnum, Events
 
 logger = utils.get_logger("learner.py")
 
