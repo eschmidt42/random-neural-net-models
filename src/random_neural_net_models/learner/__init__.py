@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import datetime
 from dataclasses import asdict
-from enum import Enum
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -20,35 +19,12 @@ from torch.utils.data import DataLoader
 
 import random_neural_net_models.telemetry as rnnm_telemetry
 import random_neural_net_models.utils as utils
+from random_neural_net_models.interfaces import Callback, CallbackEnum, Events
 
 logger = utils.get_logger("learner.py")
 
 
-class CallbackEnum(Enum):
-    train_loss = "train_loss"
-    train_activations = "train_activations"
-    train_gradients = "train_gradients"
-    train_parameters = "train_parameters"
-    lr_finder = "lr_finder"
-    every_batch_scheduler = "every_batch_scheduler"
-    early_stopping = "early_stopping"
-
-
-class Callback:
-    enum: CallbackEnum
-
-
 class CancelFitException(Exception): ...
-
-
-class Events(Enum):
-    # fastai callback events: https://docs.fast.ai/callback.core.html#events
-    after_loss = "after_loss"
-    before_train = "before_train"
-    after_train = "after_train"
-    before_batch = "before_batch"
-    after_batch = "after_batch"
-    after_epoch = "after_epoch"
 
 
 def get_learner_name() -> str:
