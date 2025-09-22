@@ -16,7 +16,7 @@ from tensordict import tensorclass
 from torch.utils.data import DataLoader
 
 import random_neural_net_models.data as rnnm_data
-import random_neural_net_models.learner as rnnm_learner
+import random_neural_net_models.learner.core as rnnm_learner
 import random_neural_net_models.telemetry as telemetry
 import random_neural_net_models.unet as unet
 import random_neural_net_models.utils as utils

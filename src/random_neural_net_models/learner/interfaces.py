@@ -46,6 +46,10 @@ class LearnerProtocol(Protocol):
     save_dir: Path | None
     loss_valid: torch.Tensor
     device: str
+    iteration: int
+    batch: int
+    epoch: int
+    learner_path: Path
 
     def register_callback(self, callbacks: list[Callback]):
         pass
