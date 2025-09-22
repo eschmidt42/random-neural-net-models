@@ -40,6 +40,7 @@ dependencies = [
     "tifffile",
     "regex",
     "plotnine>=0.15.0",
+    "polars>=1.33.1",
 ]
 
 [project.urls]
