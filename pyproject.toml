@@ -38,7 +38,8 @@ dependencies = [
     "tensordict",
     "diffusers[torch]",
     "tifffile",
-    "regex"
+    "regex",
+    "plotnine>=0.15.0",
 ]
 
 [project.urls]
