@@ -45,6 +45,18 @@ class TrainLossCallback(Callback):
             )
         )
 
+    def before_train(self, learner: LearnerProtocol):
+        pass
+
+    def after_train(self, learner: LearnerProtocol):
+        pass
+
+    def before_batch(self, learner: LearnerProtocol):
+        pass
+
+    def after_batch(self, learner: LearnerProtocol):
+        pass
+
     def after_epoch(self, learner: LearnerProtocol):
         if hasattr(learner, "loss_valid"):
             loss_valid = float(learner.loss_valid.detach().numpy())
@@ -126,6 +138,9 @@ class TrainActivationsCallback(Callback):
         self.name_patterns = name_patterns
         self.max_depth_search = max_depth_search
 
+    def after_loss(self, learner: LearnerProtocol):
+        pass
+
     def before_train(self, learner: LearnerProtocol):
         self.activations_history = rnnm_telemetry.ActivationsHistory(
             learner.model,
@@ -136,6 +151,15 @@ class TrainActivationsCallback(Callback):
 
     def after_train(self, learner: LearnerProtocol):
         self.activations_history.clean()
+
+    def before_batch(self, learner: LearnerProtocol):
+        pass
+
+    def after_batch(self, learner: LearnerProtocol):
+        pass
+
+    def after_epoch(self, learner: LearnerProtocol):
+        pass
 
     def get_stats(self) -> pd.DataFrame:
         all_stats = []
@@ -182,6 +206,9 @@ class TrainGradientsCallback(Callback):
         self.name_patterns = name_patterns
         self.max_depth_search = max_depth_search
 
+    def after_loss(self, learner: LearnerProtocol):
+        pass
+
     def before_train(self, learner: LearnerProtocol):
         self.gradients_history = rnnm_telemetry.GradientsHistory(
             learner.model,
@@ -192,6 +219,15 @@ class TrainGradientsCallback(Callback):
 
     def after_train(self, learner: LearnerProtocol):
         self.gradients_history.clean()
+
+    def before_batch(self, learner: LearnerProtocol):
+        pass
+
+    def after_batch(self, learner: LearnerProtocol):
+        pass
+
+    def after_epoch(self, learner: LearnerProtocol):
+        pass
 
     def get_stats(self) -> pd.DataFrame:
         all_stats = []
@@ -241,6 +277,9 @@ class TrainParametersCallback(Callback):
         self.name_patterns = name_patterns
         self.max_depth_search = max_depth_search
 
+    def after_loss(self, learner: LearnerProtocol):
+        pass
+
     def before_train(self, learner: LearnerProtocol):
         self.parameters_history = rnnm_telemetry.ParametersHistory(
             learner.model,
@@ -249,8 +288,17 @@ class TrainParametersCallback(Callback):
             max_depth_search=self.max_depth_search,
         )
 
+    def after_train(self, learner: LearnerProtocol):
+        pass
+
+    def before_batch(self, learner: LearnerProtocol):
+        pass
+
     def after_batch(self, learner: LearnerProtocol):
         self.parameters_history(learner.iteration)
+
+    def after_epoch(self, learner: LearnerProtocol):
+        pass
 
     def get_stats(self) -> pd.DataFrame:
         all_stats = []
@@ -313,6 +361,9 @@ class LRFinderCallback(Callback):
     def schedule(self, start: float, stop: float, pct: float) -> float:
         return start * (stop / start) ** pct
 
+    def after_loss(self, learner: LearnerProtocol):
+        pass
+
     def before_batch(self, learner: LearnerProtocol):
         self.lr = self.schedule(
             self.start_lr, self.end_lr, learner.iteration / self.num_iterations
@@ -351,6 +402,9 @@ class LRFinderCallback(Callback):
         learner.load()
         learner.learner_path.unlink()
 
+    def after_epoch(self, learner: LearnerProtocol):
+        pass
+
     def get_losses(self) -> pd.DataFrame:
         return pd.DataFrame([asdict(loss) for loss in self.losses])
 
@@ -382,8 +436,23 @@ class EveryBatchSchedulerCallback(Callback):
     def __init__(self, scheduler: optim.lr_scheduler.LRScheduler):
         self.scheduler = scheduler
 
+    def after_loss(self, learner: LearnerProtocol):
+        pass
+
+    def before_train(self, learner: LearnerProtocol):
+        pass
+
+    def after_train(self, learner: LearnerProtocol):
+        pass
+
+    def before_batch(self, learner: LearnerProtocol):
+        pass
+
     def after_batch(self, learner: LearnerProtocol):
         self.scheduler.step()
+
+    def after_epoch(self, learner: LearnerProtocol):
+        pass
 
 
 class EarlyStoppingCallback(Callback):
@@ -393,6 +462,21 @@ class EarlyStoppingCallback(Callback):
         self.patience = patience
         self.n_epochs_worse = 0
         self.best_loss = torch.tensor(torch.inf)
+
+    def after_loss(self, learner: LearnerProtocol):
+        pass
+
+    def before_train(self, learner: LearnerProtocol):
+        pass
+
+    def after_train(self, learner: LearnerProtocol):
+        pass
+
+    def before_batch(self, learner: LearnerProtocol):
+        pass
+
+    def after_batch(self, learner: LearnerProtocol):
+        pass
 
     def after_epoch(self, learner: LearnerProtocol):
         if not hasattr(learner, "loss_valid"):

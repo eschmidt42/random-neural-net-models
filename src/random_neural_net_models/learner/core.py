@@ -14,7 +14,7 @@ from random_neural_net_models.learner.callbacks import (
     CancelFitException,
     LRFinderCallback,
 )
-from random_neural_net_models.learner.interfaces import Callback, Events
+from random_neural_net_models.learner.interfaces import Callback, CallbackEnum, Events
 
 logger = utils.get_logger("learner.py")
 
@@ -34,6 +34,11 @@ class Learner:
     save_dir: Path | None
     loss_valid: torch.Tensor
     device: str
+    iteration: int
+    batch: int
+    epoch: int
+    learner_path: Path
+    registered_callbacks: dict[CallbackEnum, Callback]
 
     def __init__(
         self,
@@ -65,7 +70,7 @@ class Learner:
         self.show_fit_progress = show_fit_progress
         self.show_epoch_progress = show_epoch_progress
 
-    def register_callbacks(self, callbacks: list[Callback]):
+    def register_callbacks(self, callbacks: list[Callback] | None = None):
         if callbacks is None:
             self.registered_callbacks = {}
         else:
@@ -84,13 +89,25 @@ class Learner:
         self.registered_callbacks[callback.enum] = callback
 
     def callback(self, event: Events):
-        relevant_callbacks = [
-            cb
-            for cb in self.registered_callbacks.values()
-            if isinstance(cb, Callback) and hasattr(cb, event.value)
-        ]
-        for callback in relevant_callbacks:
-            getattr(callback, event.value)(self)
+        match event:
+            case Events.after_loss:
+                for cb in self.registered_callbacks.values():
+                    cb.after_loss(self)
+            case Events.before_train:
+                for cb in self.registered_callbacks.values():
+                    cb.before_train(self)
+            case Events.after_train:
+                for cb in self.registered_callbacks.values():
+                    cb.after_train(self)
+            case Events.before_batch:
+                for cb in self.registered_callbacks.values():
+                    cb.before_batch(self)
+            case Events.after_batch:
+                for cb in self.registered_callbacks.values():
+                    cb.after_batch(self)
+            case Events.after_epoch:
+                for cb in self.registered_callbacks.values():
+                    cb.after_epoch(self)
 
     # TODO: this does not produce the expected loss vs lr curve for rumelhart nb - is this correct?
     def _update_smooth_loss(self):

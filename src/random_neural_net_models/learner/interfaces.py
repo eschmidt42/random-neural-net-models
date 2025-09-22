@@ -1,4 +1,4 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
@@ -19,10 +19,6 @@ class CallbackEnum(StrEnum):
     lr_finder = "lr_finder"
     every_batch_scheduler = "every_batch_scheduler"
     early_stopping = "early_stopping"
-
-
-class Callback(ABC):
-    enum: CallbackEnum
 
 
 class Events(StrEnum):
@@ -50,43 +46,36 @@ class LearnerProtocol(Protocol):
     batch: int
     epoch: int
     learner_path: Path
+    registered_callbacks: dict[CallbackEnum, "Callback"]
 
-    def register_callback(self, callbacks: list[Callback]):
-        pass
+    def register_callbacks(self, callbacks: list["Callback"]): ...
 
-    def update_callback(self, events: Events):
-        pass
+    def update_callback(self, callback: "Callback"): ...
 
-    def call(self, events: Events):
-        pass
+    def callback(self, event: Events): ...
 
-    def do_batch_train(self, tensordict: TensorDict):
-        pass
+    def do_batch_train(self, tensordict: TensorDict): ...
 
-    def do_batch_valid(self, tensordict: TensorDict):
-        pass
+    def do_batch_valid(self, tensordict: TensorDict) -> torch.Tensor: ...
 
     def do_epoch(
         self, dataloader_train: DataLoader, dataloader_valid: DataLoader | None = None
-    ):
-        pass
+    ): ...
 
     def fit(
         self,
         dataloader_train: DataLoader,
         n_epochs: int,
         dataloader_valid: DataLoader | None = None,
-        callbacks: list[Callback] | None = None,
-    ):
-        pass
+        callbacks: list["Callback"] | None = None,
+    ): ...
 
     def find_learning_rate(
         self,
         dataloader: DataLoader,
         n_epochs: int,
         lr_find_callback: "LRFinderCallback",
-    ):
-        pass
+    ): ...
 
     def predict(
         self,
@@ -97,11 +86,30 @@ class LearnerProtocol(Protocol):
         torch.Tensor
         | list[torch.Tensor]
         | tuple[torch.Tensor | list[torch.Tensor], torch.Tensor]
-    ):
-        pass
+    ): ...
 
-    def save(self):
-        pass
+    def save(self): ...
 
-    def load(self):
-        pass
+    def load(self): ...
+
+
+class Callback(ABC):
+    enum: CallbackEnum
+
+    @abstractmethod
+    def after_loss(self, learner: LearnerProtocol): ...
+
+    @abstractmethod
+    def before_train(self, learner: LearnerProtocol): ...
+
+    @abstractmethod
+    def after_train(self, learner: LearnerProtocol): ...
+
+    @abstractmethod
+    def before_batch(self, learner: LearnerProtocol): ...
+
+    @abstractmethod
+    def after_batch(self, learner: LearnerProtocol): ...
+
+    @abstractmethod
+    def after_epoch(self, learner: LearnerProtocol): ...
