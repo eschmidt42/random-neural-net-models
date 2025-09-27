@@ -9,6 +9,7 @@ from plotnine import (
     geom_point,
     ggplot,
     labs,
+    scale_shape_manual,
     scale_y_continuous,
     scale_y_log10,
     theme,
@@ -112,9 +113,10 @@ class TrainLossCallback(Callback):
         )
 
         p1 = (
-            ggplot(losses_plot, aes(x="iteration", y="loss", color="set"))
+            ggplot(losses_plot, aes(x="iteration", y="loss", color="set", shape="set"))
             + geom_line(alpha=0.5)
-            + geom_point(size=1, alpha=0.5, fill="none")
+            + geom_point(size=3, alpha=0.5, fill="none")
+            + scale_shape_manual([".", "x"])
             + labs(title="Training history: loss vs iteration", x="iteration", tag="a)")
         )
         if log_yscale:
@@ -137,9 +139,10 @@ class TrainLossCallback(Callback):
         losses_plot = losses_plot.drop_nulls(["loss"])
 
         p2 = (
-            ggplot(losses_plot, aes(x="iteration", y="loss", color="set"))
+            ggplot(losses_plot, aes(x="iteration", y="loss", color="set", shape="set"))
             + geom_line(alpha=0.5)
-            + geom_point(size=1, alpha=0.5, fill="none")
+            + geom_point(size=3, alpha=0.5, fill="none")
+            + scale_shape_manual([".", "x"])
             + labs(
                 title="Rolling mean training history: loss vs iteration",
                 x="iteration",
