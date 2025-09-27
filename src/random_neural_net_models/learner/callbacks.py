@@ -1,13 +1,18 @@
 from dataclasses import asdict
 
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
 import polars as pl
-import seaborn as sns
 import torch
 import torch.optim as optim
-from plotnine import aes, geom_line, geom_point, ggplot, labs, scale_y_log10, ylim
+from plotnine import (
+    aes,
+    geom_line,
+    geom_point,
+    ggplot,
+    labs,
+    scale_y_continuous,
+    scale_y_log10,
+    ylim,
+)
 from pydantic.dataclasses import dataclass
 from torch.optim.lr_scheduler import LRScheduler
 
@@ -186,32 +191,51 @@ class TrainActivationsCallback(Callback):
     def after_epoch(self, learner: LearnerProtocol):
         pass
 
-    def get_stats(self) -> pd.DataFrame:
+    def get_stats(self) -> pl.DataFrame:
         all_stats = []
         for name, stats in self.activations_history.stats.items():
-            tmp = pd.DataFrame([asdict(v) for v in stats])
-            tmp["name"] = name
-            tmp["call"] = np.arange(len(tmp))
+            tmp = pl.DataFrame([asdict(v) for v in stats])
+            tmp = tmp.with_columns(
+                **{
+                    "name": pl.lit(name),
+                }
+            ).with_row_index("call")
+
             all_stats.append(tmp)
-        return pd.concat(all_stats, ignore_index=True)
+        return pl.concat(all_stats)
 
     def plot(self):
         activations = self.get_stats()
 
-        fig, axs = plt.subplots(figsize=(12, 12), nrows=3, sharex=True)
+        p = (
+            ggplot(activations, aes(x="call", y="mean", color="name"))
+            + geom_line()
+            + geom_point(fill="none")
+            + labs(title="Activations mean during training")
+        )
+        p.show()
 
-        ax = axs[0]
-        sns.lineplot(data=activations, x="call", y="mean", hue="name", ax=ax)
-        ax.get_legend().remove()
+        p = (
+            ggplot(activations, aes(x="call", y="std", color="name"))
+            + geom_line()
+            + geom_point(fill="none")
+            + labs(title="Activations std during training")
+        )
+        p.show()
 
-        ax = axs[1]
-        sns.lineplot(data=activations, x="call", y="std", hue="name", ax=ax)
-
-        ax = axs[2]
-        sns.lineplot(data=activations, x="call", y="frac_dead", hue="name", ax=ax)
-        ax.get_legend().remove()
-
-        plt.tight_layout()
+        p = (
+            ggplot(activations, aes(x="call", y="frac_dead", color="name"))
+            + geom_line()
+            + geom_point(fill="none")
+            + labs(
+                title="Dead activations during training",
+                y="Fraction of dead activations",
+            )
+            + scale_y_continuous(
+                labels=lambda vals: [f"{v:.0%}" for v in vals], limits=(0, 1)
+            )
+        )
+        p.show()
 
 
 class TrainGradientsCallback(Callback):
@@ -254,35 +278,57 @@ class TrainGradientsCallback(Callback):
     def after_epoch(self, learner: LearnerProtocol):
         pass
 
-    def get_stats(self) -> pd.DataFrame:
+    def get_stats(self) -> pl.DataFrame:
         all_stats = []
         for name, stats in self.gradients_history.stats.items():
-            tmp = pd.DataFrame([asdict(v) for v in stats])
-            tmp["name"] = name
-            tmp["call"] = np.arange(len(tmp))
+            tmp = pl.DataFrame([asdict(v) for v in stats])
+            tmp = tmp.with_columns(**{"name": pl.lit(name)}).with_row_index("call")
+
             all_stats.append(tmp)
-        return pd.concat(all_stats, ignore_index=True)
+        return pl.concat(all_stats)
 
     def plot(self):
         gradients = self.get_stats()
-        fig, axs = plt.subplots(figsize=(12, 12), nrows=4, sharex=True)
 
-        ax = axs[0]
-        sns.lineplot(data=gradients, x="call", y="mean", hue="name", ax=ax)
-        ax.get_legend().remove()
+        p = (
+            ggplot(gradients, aes(x="call", y="mean", color="name"))
+            + geom_line()
+            + geom_point(fill="none")
+            + labs(title="Gradients mean during training")
+        )
+        p.show()
 
-        ax = axs[1]
-        sns.lineplot(data=gradients, x="call", y="std", hue="name", ax=ax)
+        p = (
+            ggplot(gradients, aes(x="call", y="std", color="name"))
+            + geom_line()
+            + geom_point(fill="none")
+            + labs(title="Gradients std during training")
+        )
+        p.show()
 
-        ax = axs[2]
-        sns.lineplot(data=gradients, x="call", y="frac_dead", hue="name", ax=ax)
-        ax.get_legend().remove()
+        p = (
+            ggplot(gradients, aes(x="call", y="frac_dead", color="name"))
+            + geom_line()
+            + geom_point(fill="none")
+            + labs(
+                title="Dead gradients during training", y="Fraction of dead gradients"
+            )
+            + scale_y_continuous(
+                labels=lambda vals: [f"{v:.0%}" for v in vals], limits=(0, 1)
+            )
+        )
+        p.show()
 
-        ax = axs[3]
-        sns.lineplot(data=gradients, x="call", y="abs_perc90", hue="name", ax=ax)
-        ax.get_legend().remove()
-
-        plt.tight_layout()
+        p = (
+            ggplot(gradients, aes(x="call", y="abs_perc90", color="name"))
+            + geom_line()
+            + geom_point(fill="none")
+            + labs(
+                title="90th percentile of absolute gradients during training",
+                y="90%(abs(gradient))",
+            )
+        )
+        p.show()
 
 
 class TrainParametersCallback(Callback):
@@ -325,33 +371,45 @@ class TrainParametersCallback(Callback):
     def after_epoch(self, learner: LearnerProtocol):
         pass
 
-    def get_stats(self) -> pd.DataFrame:
+    def get_stats(self) -> pl.DataFrame:
         all_stats = []
         for name, stats in self.parameters_history.stats.items():
             if not (name.endswith("weight") or name.endswith("bias")):
                 continue
-            tmp = pd.DataFrame([asdict(v) for v in stats])
-            tmp["name"] = name
-            tmp["call"] = np.arange(len(tmp))
+            tmp = pl.DataFrame([asdict(v) for v in stats])
+            tmp = tmp.with_columns(**{"name": pl.lit(name)}).with_row_index("call")
             all_stats.append(tmp)
-        return pd.concat(all_stats, ignore_index=True)
+        return pl.concat(all_stats)
 
     def plot(self):
         parameters = self.get_stats()
-        fig, axs = plt.subplots(figsize=(10, 10), nrows=3, sharex=True)
 
-        ax = axs[0]
-        sns.lineplot(data=parameters, x="iter", y="mean", hue="name", ax=ax)
-        ax.get_legend().remove()
+        p = (
+            ggplot(parameters, aes(x="call", y="mean", color="name"))
+            + geom_line()
+            + geom_point(fill="none")
+            + labs(title="Parameters mean during training")
+        )
+        p.show()
 
-        ax = axs[1]
-        sns.lineplot(data=parameters, x="iter", y="std", hue="name", ax=ax)
+        p = (
+            ggplot(parameters, aes(x="call", y="std", color="name"))
+            + geom_line()
+            + geom_point(fill="none")
+            + labs(title="Parameters std during training")
+        )
+        p.show()
 
-        ax = axs[2]
-        sns.lineplot(data=parameters, x="iter", y="abs_perc90", hue="name", ax=ax)
-        ax.get_legend().remove()
-
-        plt.tight_layout()
+        p = (
+            ggplot(parameters, aes(x="call", y="abs_perc90", color="name"))
+            + geom_line()
+            + geom_point(fill="none")
+            + labs(
+                title="90th percentile of absolute parameters during training",
+                y="90%(abs(parameter))",
+            )
+        )
+        p.show()
 
 
 @dataclass
