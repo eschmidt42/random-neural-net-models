@@ -11,6 +11,7 @@ from plotnine import (
     labs,
     scale_y_continuous,
     scale_y_log10,
+    theme,
     ylim,
 )
 from pydantic.dataclasses import dataclass
@@ -83,6 +84,8 @@ class TrainLossCallback(Callback):
         log_yscale: bool = False,
         ylimits: tuple[int | float, int | float] | None = None,
     ):
+        from IPython.display import display
+
         losses = self.get_losses()
 
         losses = losses.rename({"loss": "train loss", "loss_valid": "valid loss"})
@@ -108,18 +111,16 @@ class TrainLossCallback(Callback):
             ]
         )
 
-        p = (
+        p1 = (
             ggplot(losses_plot, aes(x="iteration", y="loss", color="set"))
             + geom_line(alpha=0.5)
             + geom_point(size=1, alpha=0.5, fill="none")
-            + labs(title="Training history: loss vs iteration", x="iteration")
+            + labs(title="Training history: loss vs iteration", x="iteration", tag="a)")
         )
         if log_yscale:
-            p = p + scale_y_log10()
+            p1 = p1 + scale_y_log10()
         if ylimits:
-            p = p + ylim(*ylimits)
-
-        p.show()
+            p1 = p1 + ylim(*ylimits)
 
         losses_train_rolling = losses_train.with_columns(
             **{"loss": pl.col("train loss").rolling_mean(window)}
@@ -135,20 +136,22 @@ class TrainLossCallback(Callback):
         )
         losses_plot = losses_plot.drop_nulls(["loss"])
 
-        p = (
+        p2 = (
             ggplot(losses_plot, aes(x="iteration", y="loss", color="set"))
             + geom_line(alpha=0.5)
             + geom_point(size=1, alpha=0.5, fill="none")
             + labs(
-                title="Rolling mean training history: loss vs iteration", x="iteration"
+                title="Rolling mean training history: loss vs iteration",
+                x="iteration",
+                tag="b)",
             )
         )
         if log_yscale:
-            p = p + scale_y_log10()
+            p2 = p2 + scale_y_log10()
         if ylimits:
-            p = p + ylim(*ylimits)
+            p2 = p2 + ylim(*ylimits)
 
-        p.show()
+        display((p1 / p2) + theme(figure_size=(8, 6)))
 
 
 class TrainActivationsCallback(Callback):
@@ -205,37 +208,40 @@ class TrainActivationsCallback(Callback):
         return pl.concat(all_stats)
 
     def plot(self):
+        from IPython.display import display
+
         activations = self.get_stats()
 
-        p = (
+        p1 = (
             ggplot(activations, aes(x="call", y="mean", color="name"))
             + geom_line()
             + geom_point(fill="none")
-            + labs(title="Activations mean during training")
+            + labs(title="Activations mean during training", tag="a)")
         )
-        p.show()
 
-        p = (
+        p2 = (
             ggplot(activations, aes(x="call", y="std", color="name"))
             + geom_line()
             + geom_point(fill="none")
-            + labs(title="Activations std during training")
+            + labs(title="Activations std during training", tag="b)")
+            + theme(legend_position="none")
         )
-        p.show()
 
-        p = (
+        p3 = (
             ggplot(activations, aes(x="call", y="frac_dead", color="name"))
             + geom_line()
             + geom_point(fill="none")
             + labs(
                 title="Dead activations during training",
                 y="Fraction of dead activations",
+                tag="c)",
             )
             + scale_y_continuous(
                 labels=lambda vals: [f"{v:.0%}" for v in vals], limits=(0, 1)
             )
+            + theme(legend_position="none")
         )
-        p.show()
+        display((p1 / p2 / p3) + theme(figure_size=(8, 8)))
 
 
 class TrainGradientsCallback(Callback):
@@ -288,47 +294,53 @@ class TrainGradientsCallback(Callback):
         return pl.concat(all_stats)
 
     def plot(self):
+        from IPython.display import display
+
         gradients = self.get_stats()
 
-        p = (
+        p1 = (
             ggplot(gradients, aes(x="call", y="mean", color="name"))
             + geom_line()
             + geom_point(fill="none")
-            + labs(title="Gradients mean during training")
+            + labs(title="Gradients mean during training", tag="a)")
         )
-        p.show()
 
-        p = (
+        p2 = (
             ggplot(gradients, aes(x="call", y="std", color="name"))
             + geom_line()
             + geom_point(fill="none")
-            + labs(title="Gradients std during training")
+            + labs(title="Gradients std during training", tag="b)")
+            + theme(legend_position="none")
         )
-        p.show()
 
-        p = (
+        p3 = (
             ggplot(gradients, aes(x="call", y="frac_dead", color="name"))
             + geom_line()
             + geom_point(fill="none")
             + labs(
-                title="Dead gradients during training", y="Fraction of dead gradients"
+                title="Dead gradients during training",
+                y="Fraction of dead gradients",
+                tag="c)",
             )
             + scale_y_continuous(
                 labels=lambda vals: [f"{v:.0%}" for v in vals], limits=(0, 1)
             )
+            + theme(legend_position="none")
         )
-        p.show()
 
-        p = (
+        p4 = (
             ggplot(gradients, aes(x="call", y="abs_perc90", color="name"))
             + geom_line()
             + geom_point(fill="none")
             + labs(
                 title="90th percentile of absolute gradients during training",
                 y="90%(abs(gradient))",
+                tag="d)",
             )
+            + theme(legend_position="none")
         )
-        p.show()
+
+        display((p1 / p2 / p3 / p4) + theme(figure_size=(8, 10)))
 
 
 class TrainParametersCallback(Callback):
@@ -382,34 +394,38 @@ class TrainParametersCallback(Callback):
         return pl.concat(all_stats)
 
     def plot(self):
+        from IPython.display import display
+
         parameters = self.get_stats()
 
-        p = (
+        p1 = (
             ggplot(parameters, aes(x="call", y="mean", color="name"))
             + geom_line()
             + geom_point(fill="none")
-            + labs(title="Parameters mean during training")
+            + labs(title="Parameters mean during training", tag="a)")
         )
-        p.show()
 
-        p = (
+        p2 = (
             ggplot(parameters, aes(x="call", y="std", color="name"))
             + geom_line()
             + geom_point(fill="none")
-            + labs(title="Parameters std during training")
+            + labs(title="Parameters std during training", tag="b)")
+            + theme(legend_position="none")
         )
-        p.show()
 
-        p = (
+        p3 = (
             ggplot(parameters, aes(x="call", y="abs_perc90", color="name"))
             + geom_line()
             + geom_point(fill="none")
             + labs(
                 title="90th percentile of absolute parameters during training",
                 y="90%(abs(parameter))",
+                tag="c)",
             )
+            + theme(legend_position="none")
         )
-        p.show()
+
+        display((p1 / p2 / p3) + theme(figure_size=(8, 6)))
 
 
 @dataclass
