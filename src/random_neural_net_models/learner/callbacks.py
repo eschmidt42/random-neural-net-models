@@ -3,9 +3,11 @@ from dataclasses import asdict
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import polars as pl
 import seaborn as sns
 import torch
 import torch.optim as optim
+from plotnine import aes, geom_line, geom_point, ggplot, labs, scale_y_log10, ylim
 from pydantic.dataclasses import dataclass
 from torch.optim.lr_scheduler import LRScheduler
 
@@ -63,63 +65,85 @@ class TrainLossCallback(Callback):
             loss_valid = float(learner.loss_valid.detach().numpy())
             self.losses[-1].loss_valid = loss_valid
 
-    def get_losses(self) -> pd.DataFrame:
-        return pd.DataFrame([asdict(loss) for loss in self.losses])
+    def get_losses(self) -> pl.DataFrame:
+        return pl.from_dicts([asdict(loss) for loss in self.losses])
 
-    def get_losses_valid(self) -> pd.DataFrame:
-        return self.get_losses().loc[self.get_losses()["loss_valid"].notna(), :]
+    def get_losses_valid(self) -> pl.DataFrame:
+        return self.get_losses().filter(pl.col("loss_valid").is_not_nan())
 
-    def plot(self, window: int = 10, window_valid: int = 5, yscale: str = "linear"):
-        fig, ax = plt.subplots(figsize=(10, 4))
+    def plot(
+        self,
+        window: int = 10,
+        window_valid: int = 5,
+        log_yscale: bool = False,
+        ylimits: tuple[int | float, int | float] | None = None,
+    ):
         losses = self.get_losses()
-        sns.scatterplot(
-            data=losses,
-            x="iteration",
-            y="loss",
-            ax=ax,
-            label="train",
-            alpha=0.4,
-            s=5,
+
+        losses = losses.rename({"loss": "train loss", "loss_valid": "valid loss"})
+        losses_train = (
+            losses.select(["iteration", "train loss"])
+            .filter(pl.col("train loss").is_not_null())
+            .sort("iteration")
         )
-        losses["loss_rolling"] = losses.rolling(window=window)["loss"].mean()
-        sns.lineplot(
-            data=losses,
-            x="iteration",
-            y="loss_rolling",
-            ax=ax,
-            label="train (rolling)",
-            color="black",
-            alpha=0.5,
+        losses_valid = (
+            losses.select(["iteration", "valid loss"])
+            .filter(pl.col("valid loss").is_not_null())
+            .sort("iteration")
         )
 
-        losses_valid = self.get_losses_valid()
-        if len(losses_valid) > 0:
-            losses_valid["loss_rolling"] = losses_valid.rolling(window=window_valid)[
-                "loss_valid"
-            ].mean()
-            sns.scatterplot(
-                data=losses_valid,
-                x="iteration",
-                y="loss_valid",
-                ax=ax,
-                label="valid",
-                color="red",
-                alpha=0.6,
-                s=7,
-            )
-            sns.lineplot(
-                data=losses_valid,
-                x="iteration",
-                y="loss_rolling",
-                ax=ax,
-                label="valid (rolling)",
-                color="red",
-                # alpha=0.5,
-            )
+        losses_plot = pl.concat(
+            [
+                losses_train.rename({"train loss": "loss"}).with_columns(
+                    **{"set": pl.lit("train")}
+                ),
+                losses_valid.rename({"valid loss": "loss"}).with_columns(
+                    **{"set": pl.lit("valid")}
+                ),
+            ]
+        )
 
-        ax.legend(title="set")
-        ax.set(yscale=yscale)
-        plt.tight_layout()
+        p = (
+            ggplot(losses_plot, aes(x="iteration", y="loss", color="set"))
+            + geom_line(alpha=0.5)
+            + geom_point(size=1, alpha=0.5, fill="none")
+            + labs(title="Training history: loss vs iteration", x="iteration")
+        )
+        if log_yscale:
+            p = p + scale_y_log10()
+        if ylimits:
+            p = p + ylim(*ylimits)
+
+        p.show()
+
+        losses_train_rolling = losses_train.with_columns(
+            **{"loss": pl.col("train loss").rolling_mean(window)}
+        ).drop("train loss")
+        losses_valid_rolling = losses_valid.with_columns(
+            **{"loss": pl.col("valid loss").rolling_mean(window_valid)}
+        ).drop("valid loss")
+        losses_plot = pl.concat(
+            [
+                losses_train_rolling.with_columns(**{"set": pl.lit("train (rolling)")}),
+                losses_valid_rolling.with_columns(**{"set": pl.lit("valid (rolling)")}),
+            ]
+        )
+        losses_plot = losses_plot.drop_nulls(["loss"])
+
+        p = (
+            ggplot(losses_plot, aes(x="iteration", y="loss", color="set"))
+            + geom_line(alpha=0.5)
+            + geom_point(size=1, alpha=0.5, fill="none")
+            + labs(
+                title="Rolling mean training history: loss vs iteration", x="iteration"
+            )
+        )
+        if log_yscale:
+            p = p + scale_y_log10()
+        if ylimits:
+            p = p + ylim(*ylimits)
+
+        p.show()
 
 
 class TrainActivationsCallback(Callback):
@@ -406,29 +430,38 @@ class LRFinderCallback(Callback):
     def after_epoch(self, learner: LearnerProtocol):
         pass
 
-    def get_losses(self) -> pd.DataFrame:
-        return pd.DataFrame([asdict(loss) for loss in self.losses])
+    def get_losses(self) -> pl.DataFrame:
+        return pl.from_dicts([asdict(loss) for loss in self.losses])
 
     def plot(
         self,
-        yscale: str = "linear",
-        ylim: tuple[int | float, int | float] | None = None,
+        log_yscale: bool = False,
+        ylimits: tuple[int | float, int | float] | None = None,
     ):
-        fig, ax = plt.subplots(figsize=(12, 4))
-        lr_find_data = self.get_losses()
-        sns.lineplot(data=lr_find_data, x="lr", y="smooth_loss", ax=ax, label="smooth")
-        sns.lineplot(
-            data=lr_find_data,
-            x="lr",
-            y="loss",
-            ax=ax,
-            label="raw",
-            alpha=0.5,
-            linestyle="dashed",
+        lr_find_data = self.get_losses().rename(
+            {"loss": "raw loss", "smooth_loss": "smooth loss"}
         )
-        ax.legend(title="loss type")
-        ax.set(ylabel="loss", xscale="log", yscale=yscale, ylim=ylim)
-        plt.tight_layout()
+
+        lr_find_data = lr_find_data.select(["lr", "smooth loss", "raw loss"]).unpivot(
+            on=["smooth loss", "raw loss"],
+            index="lr",
+            variable_name="source",
+            value_name="loss",
+        )
+
+        p = (
+            ggplot(lr_find_data, aes(x="lr", y="loss", color="source"))
+            + geom_line()
+            + labs(
+                title="learning rate finder: loss vs learning rate", x="learning rate"
+            )
+        )
+        if log_yscale:
+            p = p + scale_y_log10()
+        if ylimits:
+            p = p + ylim(*ylimits)
+
+        p.show()
 
 
 class EveryBatchSchedulerCallback(Callback):
