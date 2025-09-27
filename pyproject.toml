@@ -41,6 +41,7 @@ dependencies = [
     "regex",
     "plotnine>=0.15.0",
     "polars>=1.33.1",
+    "pyarrow>=21.0.0",
 ]
 
 [project.urls]
@@ -56,7 +57,7 @@ dev = [
     "jupyter-contrib-nbextensions",
     "ipywidgets",
     "torchinfo",
-    "line_profiler"
+    "line_profiler",
 ]
 tests = [
     "pytest","pytest-cov", "coverage", "pip-audit"
