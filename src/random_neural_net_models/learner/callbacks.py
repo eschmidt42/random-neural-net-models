@@ -11,6 +11,7 @@ from plotnine import (
     labs,
     scale_shape_manual,
     scale_x_continuous,
+    scale_x_log10,
     scale_y_continuous,
     scale_y_log10,
     theme,
@@ -74,7 +75,8 @@ class TrainLossCallback(Callback):
             self.losses[-1].loss_valid = loss_valid
 
     def get_losses(self) -> pl.DataFrame:
-        return pl.from_dicts([asdict(loss) for loss in self.losses])
+        losses = [asdict(loss) for loss in self.losses]
+        return pl.from_dicts(losses, infer_schema_length=None)
 
     def get_losses_valid(self) -> pl.DataFrame:
         return self.get_losses().filter(pl.col("loss_valid").is_not_nan())
@@ -118,8 +120,8 @@ class TrainLossCallback(Callback):
 
         p1 = (
             ggplot(losses_plot, aes(x="iteration", y="loss", color="set", shape="set"))
-            + geom_line(alpha=0.5)
-            + geom_point(size=3, alpha=0.5, fill="none")
+            + geom_line(alpha=0.3)
+            + geom_point(size=3, alpha=0.3, fill="none")
             + scale_shape_manual([".", "x"])
             + labs(title="Training history: loss vs iteration", x="", tag="a)")
             + _x
@@ -145,8 +147,8 @@ class TrainLossCallback(Callback):
 
         p2 = (
             ggplot(losses_plot, aes(x="iteration", y="loss", color="set", shape="set"))
-            + geom_line(alpha=0.5)
-            + geom_point(size=3, alpha=0.5, fill="none")
+            + geom_line(alpha=0.3)
+            + geom_point(size=3, alpha=0.3, fill="none")
             + scale_shape_manual([".", "x"])
             + labs(
                 title="Rolling mean training history: loss vs iteration",
@@ -224,14 +226,14 @@ class TrainActivationsCallback(Callback):
         p1 = (
             ggplot(activations, aes(x="call", y="mean", color="name"))
             + geom_line()
-            + geom_point(fill="none")
+            + geom_point(fill="none", alpha=0.3)
             + labs(title="Activations mean during training", tag="a)", x="")
         )
 
         p2 = (
             ggplot(activations, aes(x="call", y="std", color="name"))
             + geom_line()
-            + geom_point(fill="none")
+            + geom_point(fill="none", alpha=0.3)
             + labs(title="Activations std during training", tag="b)", x="")
             + theme(legend_position="none")
         )
@@ -239,7 +241,7 @@ class TrainActivationsCallback(Callback):
         p3 = (
             ggplot(activations, aes(x="call", y="frac_dead", color="name"))
             + geom_line()
-            + geom_point(fill="none")
+            + geom_point(fill="none", alpha=0.3)
             + labs(
                 title="Dead activations during training",
                 y="Fraction of dead activations",
@@ -310,14 +312,14 @@ class TrainGradientsCallback(Callback):
         p1 = (
             ggplot(gradients, aes(x="call", y="mean", color="name"))
             + geom_line()
-            + geom_point(fill="none")
+            + geom_point(fill="none", alpha=0.3)
             + labs(title="Gradients mean during training", x="", tag="a)")
         )
 
         p2 = (
             ggplot(gradients, aes(x="call", y="std", color="name"))
             + geom_line()
-            + geom_point(fill="none")
+            + geom_point(fill="none", alpha=0.3)
             + labs(title="Gradients std during training", x="", tag="b)")
             + theme(legend_position="none")
         )
@@ -325,7 +327,7 @@ class TrainGradientsCallback(Callback):
         p3 = (
             ggplot(gradients, aes(x="call", y="frac_dead", color="name"))
             + geom_line()
-            + geom_point(fill="none")
+            + geom_point(fill="none", alpha=0.3)
             + labs(
                 title="Dead gradients during training",
                 y="Fraction of dead gradients",
@@ -341,7 +343,7 @@ class TrainGradientsCallback(Callback):
         p4 = (
             ggplot(gradients, aes(x="call", y="abs_perc90", color="name"))
             + geom_line()
-            + geom_point(fill="none")
+            + geom_point(fill="none", alpha=0.3)
             + labs(
                 title="90th percentile of absolute gradients during training",
                 y="90%(abs(gradient))",
@@ -411,14 +413,14 @@ class TrainParametersCallback(Callback):
         p1 = (
             ggplot(parameters, aes(x="call", y="mean", color="name"))
             + geom_line()
-            + geom_point(fill="none")
+            + geom_point(fill="none", alpha=0.3)
             + labs(title="Parameters mean during training", tag="a)", x="")
         )
 
         p2 = (
             ggplot(parameters, aes(x="call", y="std", color="name"))
             + geom_line()
-            + geom_point(fill="none")
+            + geom_point(fill="none", alpha=0.3)
             + labs(title="Parameters std during training", tag="b)", x="")
             + theme(legend_position="none")
         )
@@ -426,7 +428,7 @@ class TrainParametersCallback(Callback):
         p3 = (
             ggplot(parameters, aes(x="call", y="abs_perc90", color="name"))
             + geom_line()
-            + geom_point(fill="none")
+            + geom_point(fill="none", alpha=0.3)
             + labs(
                 title="90th percentile of absolute parameters during training",
                 y="90%(abs(parameter))",
@@ -519,6 +521,7 @@ class LRFinderCallback(Callback):
 
     def plot(
         self,
+        log_xscale: bool = True,
         log_yscale: bool = False,
         ylimits: tuple[int | float, int | float] | None = None,
     ):
@@ -540,6 +543,8 @@ class LRFinderCallback(Callback):
                 title="learning rate finder: loss vs learning rate", x="learning rate"
             )
         )
+        if log_xscale:
+            p = p + scale_x_log10()
         if log_yscale:
             p = p + scale_y_log10()
         if ylimits:
