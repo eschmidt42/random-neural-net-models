@@ -430,11 +430,12 @@ class LanguageModel(nn.Module):
     @torch.no_grad()
     def generate(
         self,
-        idx: torch.LongTensor,
+        idx: torch.Tensor,
         max_new_tokens: int,
         temperature: float = 1.0,
         do_sample: bool = False,
-    ) -> torch.LongTensor:
+        device: str = "cpu",
+    ) -> torch.Tensor:
         for _ in range(max_new_tokens):
             if idx.size(1) > self.n_tokens:
                 idx_cond = idx[:, -self.n_tokens :]
@@ -452,9 +453,9 @@ class LanguageModel(nn.Module):
             else:
                 _, idx_next = torch.topk(probs, k=1, dim=-1)
 
-            idx_next = torch.LongTensor(idx_next)
+            idx_next = idx_next.to(device).long()
 
-            idx = torch.LongTensor(torch.cat((idx, idx_next), dim=1))
+            idx = torch.cat((idx.long(), idx_next), dim=1)
 
         return idx
 
@@ -491,12 +492,14 @@ class LanguageModelWithTensordict(nn.Module):
         max_new_tokens: int,
         temperature: float = 1.0,
         do_sample: bool = False,
-    ) -> torch.LongTensor:
+        device: str = "cpu",
+    ) -> torch.Tensor:
         return self.language_model.generate(
             input.x,
             max_new_tokens=max_new_tokens,
             temperature=temperature,
             do_sample=do_sample,
+            device=device,
         )
 
 
