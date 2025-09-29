@@ -49,7 +49,6 @@ See jupyter notebooks in [`nbs/`](https://github.com/eschmidt42/random-neural-ne
     * `unet_fastai2022.ipynb`
     * `unet-isbi2012`
 * diffusion (unet + noise):
-  * `diffusion_fastai2022.ipynb`
   * `diffusion_fastai2022_learner.ipynb`
   * `diffusion_fastai2022_learner_with_attention.ipynb`
 * [mingpt](https://github.com/karpathy/minGPT):
@@ -67,3 +66,5 @@ See jupyter notebooks in [`nbs/`](https://github.com/eschmidt42/random-neural-ne
   * `tabular-fastai-regression-with-missingness-and-categories.ipynb`
   * `tabular-variational-auto-encoder.ipynb`
   * `reusing-vae-for-classification.ipynb`
+
+[`nbs/core`](https://github.com/eschmidt42/random-neural-net-models/tree/main/nbs/core) contains the notebooks who are guaranteed to function despite refactorings.

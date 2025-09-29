@@ -166,3 +166,4 @@ nbs/wandb
 
 # IDE
 .vscode
+.github/copilot-instructions.md

@@ -17,9 +17,17 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 
 import random_neural_net_models.data as rnnm_data
-import random_neural_net_models.learner as rnnm_learner
 import random_neural_net_models.utils as utils
 from random_neural_net_models.backprop_rumelhart import BCELoss
+from random_neural_net_models.learner import (
+    EveryBatchSchedulerCallback,
+    Learner,
+    LRFinderCallback,
+    TrainActivationsCallback,
+    TrainGradientsCallback,
+    TrainLossCallback,
+    TrainParametersCallback,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -106,7 +114,7 @@ def test_learner(use_callbacks: bool, tmp_path: Path):
     learning_rate = 1.0
     optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=1e-3)
     loss = BCELoss()
-    loss_callback = rnnm_learner.TrainLossCallback()
+    loss_callback = TrainLossCallback()
 
     # location used by learner.find_learning_rate to store the model before the search
     save_dir = tmp_path / f"./test-models-cb-{use_callbacks}"
@@ -116,13 +124,13 @@ def test_learner(use_callbacks: bool, tmp_path: Path):
 
     if use_callbacks:
         # the name_patterns used below work only because of how DenseNet and Layer are defined, you may have to use different patterns
-        activations_callback = rnnm_learner.TrainActivationsCallback(
+        activations_callback = TrainActivationsCallback(
             every_n=10, max_depth_search=4, name_patterns=(".*act",)
         )
-        gradients_callback = rnnm_learner.TrainGradientsCallback(
+        gradients_callback = TrainGradientsCallback(
             every_n=10, max_depth_search=4, name_patterns=(".*lin",)
         )
-        parameters_callback = rnnm_learner.TrainParametersCallback(
+        parameters_callback = TrainParametersCallback(
             every_n=10, max_depth_search=4, name_patterns=(".*lin",)
         )
 
@@ -132,7 +140,7 @@ def test_learner(use_callbacks: bool, tmp_path: Path):
             epochs=n_epochs,
             steps_per_epoch=len(dl_train),
         )
-        scheduler_callback = rnnm_learner.EveryBatchSchedulerCallback(scheduler)
+        scheduler_callback = EveryBatchSchedulerCallback(scheduler)
 
         callbacks = [
             loss_callback,
@@ -144,7 +152,7 @@ def test_learner(use_callbacks: bool, tmp_path: Path):
     else:
         callbacks = [loss_callback]
 
-    learner = rnnm_learner.Learner(
+    learner = Learner(
         model,
         optimizer,
         loss,
@@ -158,7 +166,7 @@ def test_learner(use_callbacks: bool, tmp_path: Path):
         print(f"{learner.save_dir=}")
         learner.save_dir.mkdir()
 
-    lr_find_callback = rnnm_learner.LRFinderCallback(1e-5, 100, 100)
+    lr_find_callback = LRFinderCallback(1e-5, 100, 100)
 
     learner.find_learning_rate(dl_train, n_epochs=2, lr_find_callback=lr_find_callback)
 

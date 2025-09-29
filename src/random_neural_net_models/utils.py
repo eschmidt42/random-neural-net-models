@@ -8,7 +8,14 @@ from rich.logging import RichHandler
 
 
 def get_device() -> str:
-    return "cuda" if torch.cuda.is_available() else "cpu"
+    cuda_availabe = torch.cuda.is_available()
+    mps_available = torch.mps.is_available()
+    if cuda_availabe:
+        return "cuda"
+    elif mps_available:
+        return "mps"
+    else:
+        return "cpu"
 
 
 def get_logger(name: str = "rich", level=logging.INFO):

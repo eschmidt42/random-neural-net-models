@@ -36,10 +36,10 @@ def calc_conv_output_dim(input_dim, kernel_size, padding, stride):
     return int((input_dim - kernel_size + 2 * padding) / stride + 1)
 
 
-def densify_y(y: torch.Tensor) -> torch.Tensor:
+def densify_y(y: torch.Tensor, dtype=torch.float64) -> torch.Tensor:
     new_y = F.one_hot(y, num_classes=10)
     new_y[new_y == 0] = -1
-    return new_y.double()
+    return new_y.to(dtype=dtype)
 
 
 class Tanh(nn.Module):
@@ -177,8 +177,8 @@ class Model(nn.Module):
             dtype=dtype,
         )
         edge = edge // 2  # effect of stride
-        self.lin1 = nn.Linear(edge * edge * 12, 30)
-        self.lin2 = nn.Linear(30, n_classes)
+        self.lin1 = nn.Linear(edge * edge * 12, 30, dtype=dtype)
+        self.lin2 = nn.Linear(30, n_classes, dtype=dtype)
 
         if lecun_init:
             s = 2.4 / self.lin1.weight.shape[0]
