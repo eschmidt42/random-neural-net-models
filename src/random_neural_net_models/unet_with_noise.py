@@ -17,7 +17,6 @@ from torch.utils.data import DataLoader
 
 import random_neural_net_models.data as rnnm_data
 import random_neural_net_models.learner.core as rnnm_learner
-import random_neural_net_models.telemetry as telemetry
 import random_neural_net_models.unet as unet
 import random_neural_net_models.utils as utils
 
@@ -719,7 +718,7 @@ def compare_input_noise_and_denoised_image(
 
 
 def denoise_with_model(
-    model: telemetry.ModelTelemetry | rnnm_learner.Learner,
+    model: rnnm_learner.Learner,
     images: torch.Tensor,
     noise_levels: torch.Tensor,
 ) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
@@ -732,9 +731,7 @@ def denoise_with_model(
         _, _, c_in = get_cs(levels.reshape(-1, 1, 1))
         images = images * c_in
 
-        if isinstance(model, telemetry.ModelTelemetry):
-            pred_noise = model(images, levels)
-        elif isinstance(model, rnnm_learner.Learner):
+        if isinstance(model, rnnm_learner.Learner):
             ds = rnnm_data.MNISTDatasetWithNoise(
                 images,
                 levels,

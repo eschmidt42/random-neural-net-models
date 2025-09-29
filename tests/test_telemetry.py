@@ -1,83 +1,75 @@
 # -*- coding: utf-8 -*-
-import pytest
+import torch
 import torch.nn as nn
-from sklearn.datasets import fetch_openml
-from torch.optim import SGD
-from torch.utils.data import DataLoader
 
-import random_neural_net_models.convolution_lecun1990 as conv_lecun1990
 import random_neural_net_models.telemetry as telemetry
 
 
-@pytest.fixture(scope="module")
-def cnn_model_telemetry() -> telemetry.ModelTelemetry:
-    """Telemetry for a CNN model."""
+class SimpleNet(nn.Module):
+    def __init__(self, n_in: int = 4, n_out: int = 2):
+        super().__init__()
+        self.lin = nn.Linear(n_in, n_out)
+        # name the activation attribute 'act' so patterns like ".*act" will match
+        self.act = nn.ReLU()
 
-    mnist = fetch_openml("mnist_784", version=1, cache=True, parser="auto")
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.act(self.lin(x))
 
-    X = mnist["data"].iloc[:100]
-    y = mnist["target"].iloc[:100]
 
-    ds = conv_lecun1990.DigitsDataset(X, y)
-    dataloader = DataLoader(ds, batch_size=1, shuffle=False)
+def test_activations_history_collects_stats():
+    model = SimpleNet()
+    # collect every forward
+    ah = telemetry.ActivationsHistory(model, every_n=1, name_patterns=(".*act",))
 
-    model = conv_lecun1990.Model(lecun_init=True, lecun_act=True)
-    model = telemetry.ModelTelemetry(
-        model,
-        activations_every_n=1,
-        gradients_every_n=1,
-        parameters_every_n=1,
-        activations_name_patterns=(".*act.*",),
-        gradients_name_patterns=(r"conv\d$", r"lin\d"),
-        parameters_name_patterns=(r"conv\d$", r"lin\d"),
-    )
-    model.double()
+    # run a few forwards
+    for _ in range(3):
+        _ = model(torch.randn(5, 4))
 
-    opt = SGD(
-        model.parameters(),
-        lr=0.1,
-    )
-    loss_func = nn.MSELoss()
+    # the history should have entries for the activation module name
+    # ChildSearch will name the module simply 'act' here
+    assert any(name.endswith("act") for name in ah.stats.keys())
+    # find the recorded list and ensure it has 3 entries (one per forward)
+    key = [k for k in ah.stats.keys() if k.endswith("act")][0]
+    assert len(ah.stats[key]) == 3
 
-    _iter = 0
-    xb, yb = next(iter(dataloader))
-    xb = xb.cpu()
-    yb = yb.cpu()
-    yb = conv_lecun1990.densify_y(yb)
-    loss = loss_func(model(xb), yb)
+    ah.clean()
 
-    opt.zero_grad()
+
+def test_gradients_history_collects_stats():
+    model = SimpleNet()
+    gh = telemetry.GradientsHistory(model, every_n=1, name_patterns=(".*lin",))
+
+    # forward + simple loss + backward
+    x = torch.randn(4, 4)
+    out = model(x)
+    loss = out.sum()
     loss.backward()
-    opt.step()
 
-    model.loss_history_train(loss, _iter)
-    model.parameter_history(_iter)
+    # expect gradient stats recorded for the linear module
+    assert any(name.endswith("lin") for name in gh.stats.keys())
+    key = [k for k in gh.stats.keys() if k.endswith("lin")][0]
+    assert len(gh.stats[key]) == 1
 
-    return model
-
-
-# test activations stats are present
-def test_cnn_model_telemetry_activations(
-    cnn_model_telemetry: telemetry.ModelTelemetry,
-):
-    assert cnn_model_telemetry.activations_history.stats is not None
-    for _, stats in cnn_model_telemetry.activations_history.stats.items():
-        assert len(stats) == 1
+    gh.clean()
 
 
-# test parameter stats are present
-def test_cnn_model_telemetry_parameters(
-    cnn_model_telemetry: telemetry.ModelTelemetry,
-):
-    assert cnn_model_telemetry.parameter_history.stats is not None
-    for _, stats in cnn_model_telemetry.parameter_history.stats.items():
-        assert len(stats) == 1
+def test_parameters_history_collects_stats_and_not_initialized():
+    model = SimpleNet()
 
+    # parameter history when initialized with a pattern
+    ph = telemetry.ParametersHistory(model, every_n=1, name_patterns=(".*lin",))
+    ph(1)
+    # should have entries for weight and bias under the linear module
+    keys = list(ph.stats.keys())
+    assert any(k.endswith("lin.weight") for k in keys)
+    assert any(k.endswith("lin.bias") for k in keys)
+    # values should match direct tensor statistics
+    w_key = [k for k in keys if k.endswith("lin.weight")][0]
+    stat = ph.stats[w_key][-1]
+    direct_mean = model.lin.weight.detach().flatten().float().mean().cpu().item()
+    assert abs(stat.mean - direct_mean) < 1e-6
 
-# test gradient stats are present
-def test_cnn_model_telemetry_gradients(
-    cnn_model_telemetry: telemetry.ModelTelemetry,
-):
-    assert cnn_model_telemetry.gradients_history.stats is not None
-    for _, stats in cnn_model_telemetry.gradients_history.stats.items():
-        assert len(stats) == 1
+    # parameter history when not initialized should be a no-op
+    ph2 = telemetry.ParametersHistory(model, every_n=1, name_patterns=None)
+    ph2(1)
+    assert len(ph2.stats) == 0
