@@ -9,6 +9,7 @@ import pandas as pd
 import seaborn as sns
 import torch
 import torch.nn as nn
+from torch.utils.hooks import RemovableHandle
 
 import random_neural_net_models.search as search
 import random_neural_net_models.utils as utils
@@ -17,6 +18,12 @@ logger = utils.get_logger("telemetry.py")
 
 
 class History:
+    not_initialized: bool
+    hooks: dict[str, RemovableHandle]
+    child_search: search.ChildSearch
+    every_n: int
+    modules: list[search.NamedModule]
+
     def __init__(
         self,
         model: nn.Module,
