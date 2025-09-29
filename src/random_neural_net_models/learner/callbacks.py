@@ -186,12 +186,22 @@ class TrainActivationsCallback(Callback):
         pass
 
     def before_train(self, learner: LearnerProtocol):
-        self.activations_history = rnnm_telemetry.ActivationsHistory(
-            learner.model,
-            every_n=self.every_n,
-            name_patterns=self.name_patterns,
-            max_depth_search=self.max_depth_search,
-        )
+        if not hasattr(self, "activations_history") or self.activations_history is None:
+            self.activations_history = rnnm_telemetry.ActivationsHistory(
+                learner.model,
+                every_n=self.every_n,
+                name_patterns=self.name_patterns,
+                max_depth_search=self.max_depth_search,
+            )
+        else:
+            stats = dict(self.activations_history.stats)
+            self.activations_history = rnnm_telemetry.ActivationsHistory(
+                learner.model,
+                every_n=self.every_n,
+                name_patterns=self.name_patterns,
+                max_depth_search=self.max_depth_search,
+                stats=stats,
+            )
 
     def after_train(self, learner: LearnerProtocol):
         self.activations_history.clean()
@@ -213,7 +223,7 @@ class TrainActivationsCallback(Callback):
                 **{
                     "name": pl.lit(name),
                 }
-            ).with_row_index("call")
+            )
 
             all_stats.append(tmp)
         return pl.concat(all_stats)
@@ -224,14 +234,14 @@ class TrainActivationsCallback(Callback):
         activations = self.get_stats()
 
         p1 = (
-            ggplot(activations, aes(x="call", y="mean", color="name"))
+            ggplot(activations, aes(x="iteration", y="mean", color="name"))
             + geom_line()
             + geom_point(fill="none", alpha=0.3)
             + labs(title="Activations mean during training", tag="a)", x="")
         )
 
         p2 = (
-            ggplot(activations, aes(x="call", y="std", color="name"))
+            ggplot(activations, aes(x="iteration", y="std", color="name"))
             + geom_line()
             + geom_point(fill="none", alpha=0.3)
             + labs(title="Activations std during training", tag="b)", x="")
@@ -239,7 +249,7 @@ class TrainActivationsCallback(Callback):
         )
 
         p3 = (
-            ggplot(activations, aes(x="call", y="frac_dead", color="name"))
+            ggplot(activations, aes(x="iteration", y="frac_dead", color="name"))
             + geom_line()
             + geom_point(fill="none", alpha=0.3)
             + labs(
@@ -276,12 +286,22 @@ class TrainGradientsCallback(Callback):
         pass
 
     def before_train(self, learner: LearnerProtocol):
-        self.gradients_history = rnnm_telemetry.GradientsHistory(
-            learner.model,
-            every_n=self.every_n,
-            name_patterns=self.name_patterns,
-            max_depth_search=self.max_depth_search,
-        )
+        if not hasattr(self, "gradients_history") or self.gradients_history is None:
+            self.gradients_history = rnnm_telemetry.GradientsHistory(
+                learner.model,
+                every_n=self.every_n,
+                name_patterns=self.name_patterns,
+                max_depth_search=self.max_depth_search,
+            )
+        else:
+            stats = dict(self.gradients_history.stats)
+            self.gradients_history = rnnm_telemetry.GradientsHistory(
+                learner.model,
+                every_n=self.every_n,
+                name_patterns=self.name_patterns,
+                max_depth_search=self.max_depth_search,
+                stats=stats,
+            )
 
     def after_train(self, learner: LearnerProtocol):
         self.gradients_history.clean()
@@ -299,7 +319,7 @@ class TrainGradientsCallback(Callback):
         all_stats = []
         for name, stats in self.gradients_history.stats.items():
             tmp = pl.DataFrame([asdict(v) for v in stats])
-            tmp = tmp.with_columns(**{"name": pl.lit(name)}).with_row_index("call")
+            tmp = tmp.with_columns(**{"name": pl.lit(name)})
 
             all_stats.append(tmp)
         return pl.concat(all_stats)
@@ -310,14 +330,14 @@ class TrainGradientsCallback(Callback):
         gradients = self.get_stats()
 
         p1 = (
-            ggplot(gradients, aes(x="call", y="mean", color="name"))
+            ggplot(gradients, aes(x="iteration", y="mean", color="name"))
             + geom_line()
             + geom_point(fill="none", alpha=0.3)
             + labs(title="Gradients mean during training", x="", tag="a)")
         )
 
         p2 = (
-            ggplot(gradients, aes(x="call", y="std", color="name"))
+            ggplot(gradients, aes(x="iteration", y="std", color="name"))
             + geom_line()
             + geom_point(fill="none", alpha=0.3)
             + labs(title="Gradients std during training", x="", tag="b)")
@@ -325,7 +345,7 @@ class TrainGradientsCallback(Callback):
         )
 
         p3 = (
-            ggplot(gradients, aes(x="call", y="frac_dead", color="name"))
+            ggplot(gradients, aes(x="iteration", y="frac_dead", color="name"))
             + geom_line()
             + geom_point(fill="none", alpha=0.3)
             + labs(
@@ -341,7 +361,7 @@ class TrainGradientsCallback(Callback):
         )
 
         p4 = (
-            ggplot(gradients, aes(x="call", y="abs_perc90", color="name"))
+            ggplot(gradients, aes(x="iteration", y="abs_perc90", color="name"))
             + geom_line()
             + geom_point(fill="none", alpha=0.3)
             + labs(
@@ -376,12 +396,22 @@ class TrainParametersCallback(Callback):
         pass
 
     def before_train(self, learner: LearnerProtocol):
-        self.parameters_history = rnnm_telemetry.ParametersHistory(
-            learner.model,
-            every_n=self.every_n,
-            name_patterns=self.name_patterns,
-            max_depth_search=self.max_depth_search,
-        )
+        if not hasattr(self, "parameters_history") or self.parameters_history is None:
+            self.parameters_history = rnnm_telemetry.ParametersHistory(
+                learner.model,
+                every_n=self.every_n,
+                name_patterns=self.name_patterns,
+                max_depth_search=self.max_depth_search,
+            )
+        else:
+            stats = dict(self.parameters_history.stats)
+            self.parameters_history = rnnm_telemetry.ParametersHistory(
+                learner.model,
+                every_n=self.every_n,
+                name_patterns=self.name_patterns,
+                max_depth_search=self.max_depth_search,
+                stats=stats,
+            )
 
     def after_train(self, learner: LearnerProtocol):
         pass
@@ -401,7 +431,7 @@ class TrainParametersCallback(Callback):
             if not (name.endswith("weight") or name.endswith("bias")):
                 continue
             tmp = pl.DataFrame([asdict(v) for v in stats])
-            tmp = tmp.with_columns(**{"name": pl.lit(name)}).with_row_index("call")
+            tmp = tmp.with_columns(**{"name": pl.lit(name)})
             all_stats.append(tmp)
         return pl.concat(all_stats)
 
@@ -411,14 +441,14 @@ class TrainParametersCallback(Callback):
         parameters = self.get_stats()
 
         p1 = (
-            ggplot(parameters, aes(x="call", y="mean", color="name"))
+            ggplot(parameters, aes(x="iteration", y="mean", color="name"))
             + geom_line()
             + geom_point(fill="none", alpha=0.3)
             + labs(title="Parameters mean during training", tag="a)", x="")
         )
 
         p2 = (
-            ggplot(parameters, aes(x="call", y="std", color="name"))
+            ggplot(parameters, aes(x="iteration", y="std", color="name"))
             + geom_line()
             + geom_point(fill="none", alpha=0.3)
             + labs(title="Parameters std during training", tag="b)", x="")
@@ -426,7 +456,7 @@ class TrainParametersCallback(Callback):
         )
 
         p3 = (
-            ggplot(parameters, aes(x="call", y="abs_perc90", color="name"))
+            ggplot(parameters, aes(x="iteration", y="abs_perc90", color="name"))
             + geom_line()
             + geom_point(fill="none", alpha=0.3)
             + labs(

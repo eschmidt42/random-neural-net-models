@@ -17,6 +17,32 @@ import random_neural_net_models.utils as utils
 logger = utils.get_logger("telemetry.py")
 
 
+@dataclass
+class ActivationStats:
+    iteration: int
+    mean: float
+    std: float
+    frac_dead: int
+
+
+@dataclass
+class ParameterStats:
+    iteration: int
+    mean: float
+    std: float
+    abs_perc90: float
+
+
+@dataclass
+class GradientStats:
+    iteration: int
+    mean: float
+    std: float
+    abs_perc90: float
+    max: float
+    frac_dead: float
+
+
 class History:
     not_initialized: bool
     hooks: dict[str, RemovableHandle]
@@ -64,10 +90,13 @@ class ActivationsHistory(History):
         every_n: int = 1,
         name_patterns: tuple[str] | None = None,
         max_depth_search: int = 3,
+        stats: dict[str, list[ActivationStats]] | None = None,
     ):
         super().__init__(model, every_n, name_patterns, max_depth_search)
 
-        self.stats: dict[str, list[ActivationStats]] = defaultdict(list)
+        self.stats: dict[str, list[ActivationStats]] = (
+            stats if stats else defaultdict(list)
+        )
         self.register_hooks(model, name_patterns, max_depth_search)
 
     def register_hooks(
@@ -77,10 +106,15 @@ class ActivationsHistory(History):
         max_depth_search: int = 3,
     ):
         self.hooks = defaultdict(None)
+        if self.stats is None or (len(self.stats) == 0):
+            iteration = 0
+        else:
+            k = list(self.stats.keys())[0]
+            iteration = self.stats[k][-1].iteration
 
         for named_module in self.modules:
             cas = CollectorActivationStats(
-                self, named_module.name, every_n=self.every_n
+                self, named_module.name, iteration, every_n=self.every_n
             )
             self.hooks[named_module.name] = named_module.module.register_forward_hook(
                 cas
@@ -98,9 +132,12 @@ class GradientsHistory(History):
         every_n: int = 1,
         name_patterns: tuple[str] | None = None,
         max_depth_search: int = 3,
+        stats: dict[str, list[GradientStats]] | None = None,
     ):
         super().__init__(model, every_n, name_patterns, max_depth_search)
-        self.stats: dict[str, list[ParameterStats]] = defaultdict(list)
+        self.stats: dict[str, list[GradientStats]] = (
+            defaultdict(list) if stats is None else stats
+        )
         self.register_hooks(model, name_patterns, max_depth_search)
 
     def register_hooks(
@@ -115,8 +152,16 @@ class GradientsHistory(History):
         self.modules = self.child_search(*name_patterns)
         self.hooks = defaultdict(None)
 
+        if self.stats is None or len(self.stats) == 0:
+            iteration = 0
+        else:
+            k = list(self.stats.keys())[0]
+            iteration = self.stats[k][-1].iteration
+
         for named_module in self.modules:
-            cgs = CollectorGradientStats(self, named_module.name, every_n=self.every_n)
+            cgs = CollectorGradientStats(
+                self, named_module.name, iteration, every_n=self.every_n
+            )
             self.hooks[named_module.name] = (
                 named_module.module.register_full_backward_hook(cgs)
             )
@@ -137,9 +182,12 @@ class ParametersHistory(History):
         every_n: int = 1,
         name_patterns: tuple[str] | None = None,
         max_depth_search: int = 3,
+        stats: dict[str, list[ParameterStats]] | None = None,
     ):
         super().__init__(model, every_n, name_patterns, max_depth_search)
-        self.stats: dict[str, list[ParameterStats]] = defaultdict(list)
+        self.stats: dict[str, list[ParameterStats]] = (
+            defaultdict(list) if stats is None else stats
+        )
         self.every_n = every_n
         logger.info(
             f"Will collect parameter history every {self.every_n}th iteration for: {self.name_matches=}"
@@ -275,13 +323,14 @@ class CollectorActivationStats:
         self,
         hook: ActivationsHistory,
         name: str,
+        iteration: int,
         every_n: int = 1,
         threshold_dead=1e-6,
     ):
         self.hook = hook
         self.name = name
         self.every_n = every_n
-        self.iter = 0
+        self.iteration = iteration
         self.threshold_dead = threshold_dead
 
     def __call__(
@@ -290,8 +339,8 @@ class CollectorActivationStats:
         input: torch.Tensor,
         output: torch.Tensor,
     ):
-        self.iter += 1
-        if self.iter % self.every_n != 0:
+        self.iteration += 1
+        if self.iteration % self.every_n != 0:
             return
 
         acts = output.detach().flatten()
@@ -299,7 +348,9 @@ class CollectorActivationStats:
         std = acts.std().cpu().item()
         frac_dead = (acts.abs() < self.threshold_dead).sum().cpu().item() / len(acts)
 
-        self.hook.stats[self.name].append(ActivationStats(mean, std, frac_dead))
+        self.hook.stats[self.name].append(
+            ActivationStats(int(self.iteration), mean, std, frac_dead)
+        )
 
 
 class CollectorGradientStats:
@@ -307,13 +358,14 @@ class CollectorGradientStats:
         self,
         hook: GradientsHistory,
         name: str,
+        iteration: int,
         every_n: int = 1,
         threshold_dead: float = 1e-8,
     ):
         self.hook = hook
         self.name = name
         self.every_n = every_n
-        self.iter = 0
+        self.iteration = iteration
         self.threshold_dead = threshold_dead
 
     def __call__(
@@ -322,9 +374,10 @@ class CollectorGradientStats:
         input: torch.Tensor,
         output: torch.Tensor,
     ):
-        self.iter += 1
-        if self.iter % self.every_n != 0:
+        self.iteration += 1
+        if self.iteration % self.every_n != 0:
             return
+
         vals = output[0].detach().flatten()
         mean = vals.mean().cpu().item()
         std = vals.std().cpu().item()
@@ -333,7 +386,7 @@ class CollectorGradientStats:
         frac_dead = (vals.abs() < self.threshold_dead).sum().cpu().item() / len(vals)
 
         self.hook.stats[self.name].append(
-            GradientStats(mean, std, abs_perc90, _max, frac_dead)
+            GradientStats(int(self.iteration), mean, std, abs_perc90, _max, frac_dead)
         )
 
 
@@ -561,27 +614,3 @@ class LossHistory:
             plt.tight_layout()
 
         return fig, ax
-
-
-@dataclass
-class ActivationStats:
-    mean: float
-    std: float
-    frac_dead: int
-
-
-@dataclass
-class ParameterStats:
-    iter: int
-    mean: float
-    std: float
-    abs_perc90: float
-
-
-@dataclass
-class GradientStats:
-    mean: float
-    std: float
-    abs_perc90: float
-    max: float
-    frac_dead: float
