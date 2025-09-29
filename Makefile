@@ -37,7 +37,7 @@ install-ci-env:
 # ------------------------------------------------------------------------------
 .PHONY: run-notebooks-core
 run-notebooks-core:
-	sh scripts/run-notebooks-core.sh
+	bash scripts/run-notebooks-core.sh
 
 # ==============================================================================
 # test
