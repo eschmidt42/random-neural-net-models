@@ -33,7 +33,7 @@ make install-dev-env
 ## Usage
 
 See jupyter notebooks in [`nbs/`](https://github.com/eschmidt42/random-neural-net-models/tree/main/nbs) for:
-* fastai style learner with tensordict: `learner-example.ipynb`
+* fastai style learner with tensordict: `learner.ipynb`
 * perceptron: `perceptron.ipynb`
 * backpropagation: `backpropagation_rumelhart1986.ipynb`
 * convolution: `convolution_lecun1990.ipynb`

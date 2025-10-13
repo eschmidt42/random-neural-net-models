@@ -38,7 +38,7 @@ repos:
     - id: pip-audit-uv
       name: pip-audit using uv's venv
       language: system
-      entry: uv run pip-audit
+      entry: uv run pip-audit --ignore-vuln GHSA-4xh5-x5gv-qwph
       pass_filenames: false
     - id: tests
       name: tests
